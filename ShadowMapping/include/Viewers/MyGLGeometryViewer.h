@@ -19,12 +19,14 @@ public:
 	void configureAmbient(int windowWidth, int windowHeight);
 	void configureLight();	
 	void configurePhong(glm::vec3 lightPosition, glm::vec3 cameraPosition);
-	void configureShadow(glm::mat4 lightMVP);
+	void configureShadow(glm::mat4 lightMVP, int shadowMapWidth, int shadowMapHeight);
+	void configurePSRMatrix(int xmin, int xmax, int ymin, int ymax, int width, int height);
 	void drawPlane(float x, float y, float z);
 	void drawMesh(GLuint *VBOs, int numberOfIndices);
 	glm::mat4 getProjectionMatrix() { return projection; }
 	glm::mat4 getViewMatrix() { return view; }
 	glm::mat4 getModelMatrix() { return model; }
+	glm::mat4 getPSRMatrix() { return psr; }
 	void loadVBOs(GLuint *VBOs, float *pointCloud, float *normalVectors, int *indices, int numberOfPoints, int numberOfIndices);
 	void setEye(glm::vec3 eye) { this->eye = eye; }
 	void setLook(glm::vec3 look) { this->look = look; }
@@ -37,6 +39,7 @@ public:
 	glm::mat4 projection;
 	glm::mat4 view;
 	glm::mat4 model;
+	glm::mat4 psr;
 	glm::vec3 eye;
 	glm::vec3 look;
 	glm::vec3 up;

@@ -3,7 +3,7 @@
 MyGLGeometryViewer::MyGLGeometryViewer()
 {
 
-	fov = 60.f;
+	fov = 45.f;
 	zNear = 1.0f;
 	zFar = 5000.0f;
 
@@ -37,6 +37,9 @@ void MyGLGeometryViewer::configureAmbient(int windowWidth, int windowHeight)
 	view = glm::lookAt(eye, look, up);
 	model = glm::mat4(1.0f);
 
+	glDisable(GL_LIGHTING);
+	glDisable(GL_ALPHA_TEST);
+	glDisable(GL_BLEND);
 	glEnable(GL_DEPTH_TEST);
 	
 }
@@ -92,7 +95,7 @@ void MyGLGeometryViewer::configurePhong(glm::vec3 lightPosition, glm::vec3 camer
 
 }
 
-void MyGLGeometryViewer::configureShadow(glm::mat4 lightMVP) 
+void MyGLGeometryViewer::configureShadow(glm::mat4 lightMVP, int shadowMapWidth, int shadowMapHeight) 
 {
 	
 	glm::mat4 bias;
@@ -106,8 +109,47 @@ void MyGLGeometryViewer::configureShadow(glm::mat4 lightMVP)
 	glUniformMatrix4fv(lightMVPID, 1, GL_FALSE, &lightMVP[0][0]);
 	GLuint lightMVPInvID = glGetUniformLocation(shaderProg, "lightMVPInv");
 	glUniformMatrix4fv(lightMVPInvID, 1, GL_FALSE, &glm::inverse(lightMVP)[0][0]);
+	GLuint shadowMapWidthID = glGetUniformLocation(shaderProg, "shadowMapWidth");
+	glUniform1i(shadowMapWidthID, shadowMapWidth);
+	GLuint shadowMapHeightID = glGetUniformLocation(shaderProg, "shadowMapHeight");
+	glUniform1i(shadowMapHeightID, shadowMapHeight);
+
 
 }
+
+void MyGLGeometryViewer::configurePSRMatrix(int xmin, int xmax, int ymin, int ymax, int width, int height) 
+{
+
+	//In OpenGL, the interval [-1, 1] for the y-axis is from bottom to top.
+	//Conventionally, we consider the interval [min, max] for the y-axis from top to bottom.
+
+	ymin = width - ymin;
+	ymax = height - ymax;
+
+	int aux;
+	aux = ymin;
+	ymin = ymax;
+	ymax = aux;
+
+	float normalizedXMin = (xmin - 0.5 * width)/(0.5 * width);
+	float normalizedXMax = (xmax - 0.5 * width)/(0.5 * width);
+	float normalizedYMin = (ymin - 0.5 * height)/(0.5 * height);
+	float normalizedYMax = (ymax - 0.5 * height)/(0.5 * height);
+	
+	float sx = 2.0/(normalizedXMax - normalizedXMin);
+	float sy = 2.0/(normalizedYMax - normalizedYMin);
+	float ox = (-sx * (normalizedXMax + normalizedXMin))/2.0;
+	float oy = (-sy * (normalizedYMax + normalizedYMin))/2.0;
+	ox = ceil(ox * width)/width;
+	oy = ceil(oy * height)/height;
+
+	psr[0][0] = sx;		psr[0][1] = 0;		psr[0][2] = 0;		psr[0][3] = 0.0;
+	psr[1][0] = 0;		psr[1][1] = sy;		psr[1][2] = 0;		psr[1][3] = 0.0;
+	psr[2][0] = 0;		psr[2][1] = 0;		psr[2][2] = 1.0;	psr[2][3] = 0.0;
+	psr[3][0] = ox;		psr[3][1] = oy;		psr[3][2] = 0;		psr[3][3] = 1.0;
+
+}
+	
 
 void MyGLGeometryViewer::drawPlane(float x, float y, float z) {
 	

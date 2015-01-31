@@ -2,6 +2,9 @@
 
 Mesh::Mesh() 
 {
+	pointCloud = NULL;
+	normalVector = NULL;
+	indices = NULL;
 }
 
 Mesh::~Mesh()
@@ -11,6 +14,82 @@ Mesh::~Mesh()
 	delete [] normalVector;
 	delete [] indices;
 
+}
+
+void Mesh::addObject(Mesh *mesh) 
+{
+
+	if(pointCloud == NULL) {
+		
+		pointCloudSize = mesh->getPointCloudSize();
+		indicesSize = mesh->getIndicesSize();
+
+		pointCloud = (float*)malloc(pointCloudSize * sizeof(float));
+		normalVector = (float*)malloc(pointCloudSize * sizeof(float));
+		indices = (int*)malloc(indicesSize * sizeof(int));
+
+		for(int point = 0; point < pointCloudSize; point++)
+			pointCloud[point] = mesh->getPointCloud()[point];
+
+		for(int point = 0; point < pointCloudSize; point++)
+			normalVector[point] = mesh->getNormalVector()[point];
+
+		for(int index = 0; index < indicesSize; index++)
+			indices[index] = mesh->getIndices()[index];
+	
+	} else {
+		
+		int prevPointCloudSize = pointCloudSize;
+		int prevIndicesSize = indicesSize;
+
+		float *prevPointCloud = (float*)malloc(pointCloudSize * sizeof(float));
+		float *prevNormalVector = (float*)malloc(pointCloudSize * sizeof(float));
+		int *prevIndices = (int*)malloc(indicesSize * sizeof(int));
+
+		for(int point = 0; point < pointCloudSize; point++)
+			prevPointCloud[point] = pointCloud[point];
+
+		for(int point = 0; point < pointCloudSize; point++)
+			prevNormalVector[point] = normalVector[point];
+
+		for(int index = 0; index < indicesSize; index++)
+			prevIndices[index] = indices[index];
+	
+		delete [] pointCloud;
+		delete [] normalVector;
+		delete [] indices;
+
+		pointCloudSize = prevPointCloudSize + mesh->getPointCloudSize();
+		indicesSize = prevIndicesSize + mesh->getIndicesSize();
+
+		pointCloud = (float*)malloc(pointCloudSize * sizeof(float));
+		normalVector = (float*)malloc(pointCloudSize * sizeof(float));
+		indices = (int*)malloc(indicesSize * sizeof(int));
+
+		for(int point = 0; point < prevPointCloudSize; point++)
+			pointCloud[point] = prevPointCloud[point];
+
+		for(int point = 0; point < prevPointCloudSize; point++)
+			normalVector[point] = prevNormalVector[point];
+
+		for(int index = 0; index < prevIndicesSize; index++)
+			indices[index] = prevIndices[index];
+	
+		for(int point = prevPointCloudSize; point < pointCloudSize; point++)
+			pointCloud[point] = mesh->getPointCloud()[point - prevPointCloudSize];
+
+		for(int point = prevPointCloudSize; point < pointCloudSize; point++)
+			normalVector[point] = mesh->getNormalVector()[point - prevPointCloudSize];
+
+		for(int index = prevIndicesSize; index < indicesSize; index++)
+			indices[index] = mesh->getIndices()[index - prevIndicesSize] + prevPointCloudSize/3;
+	
+		delete [] prevPointCloud;
+		delete [] prevNormalVector;
+		delete [] prevIndices;
+
+	}
+	
 }
 
 void Mesh::buildCube(float x, float y, float z)
@@ -84,5 +163,106 @@ void Mesh::buildPlane(float x, float y, float z)
 
 	indices[0] = 0; indices[1] = 1; indices[2] = 2;
 	indices[3] = 0; indices[4] = 2; indices[5] = 3;
+
+}
+
+void Mesh::computeNormals()
+{
+
+	std::vector <int> nb_seen;
+	nb_seen.resize(pointCloudSize/3);
+
+	for(int i = 0; i < indicesSize; i+=3) {
+		int a = indices[i + 0];
+		int b = indices[i + 1];
+		int c = indices[i + 2];
+		glm::vec3 normal = glm::normalize(glm::cross(
+			glm::vec3(pointCloud[b * 3 + 0], pointCloud[b * 3 + 1], pointCloud[b * 3 + 2]) - 
+			glm::vec3(pointCloud[a * 3 + 0], pointCloud[a * 3 + 1], pointCloud[a * 3 + 2]),
+			glm::vec3(pointCloud[c * 3 + 0], pointCloud[c * 3 + 1], pointCloud[c * 3 + 2]) - 
+			glm::vec3(pointCloud[a * 3 + 0], pointCloud[a * 3 + 1], pointCloud[a * 3 + 2])));
+
+		int v[3];  v[0] = a;  v[1] = b;  v[2] = c;
+		for(int j = 0; j < 3; j++) {
+			
+			int cur_v = v[j];
+			nb_seen[cur_v]++;
+			if(nb_seen[cur_v] == 1) {
+				normalVector[cur_v * 3 + 0] = normal.x;
+				normalVector[cur_v * 3 + 1] = normal.y;
+				normalVector[cur_v * 3 + 2] = normal.z;
+			} else {
+				normalVector[cur_v * 3 + 0] = normalVector[cur_v * 3 + 0] * (1.0 - 1.0/nb_seen[cur_v]) + normal.x * 1.0/nb_seen[cur_v];
+				normalVector[cur_v * 3 + 1] = normalVector[cur_v * 3 + 1] * (1.0 - 1.0/nb_seen[cur_v]) + normal.y * 1.0/nb_seen[cur_v];
+				normalVector[cur_v * 3 + 2] = normalVector[cur_v * 3 + 2] * (1.0 - 1.0/nb_seen[cur_v]) + normal.z * 1.0/nb_seen[cur_v];
+			
+			}
+
+		}		
+
+	}
+
+}
+
+void Mesh::loadOBJFile(char *filename)
+{
+
+	GLMmodel *model = glmReadOBJ(filename);
+	
+	pointCloudSize = model->numvertices * 3;
+	indicesSize = model->numtriangles * 3;
+
+	pointCloud = (float*)malloc(pointCloudSize * sizeof(float));
+	normalVector = (float*)malloc(pointCloudSize * sizeof(float));
+	indices = (int*)malloc(indicesSize * sizeof(int));
+
+	for(int point = 0; point < pointCloudSize/3; point++) {
+		
+		pointCloud[point * 3 + 0] = model->vertices[(point + 1) * 3 + 0];
+		pointCloud[point * 3 + 1] = model->vertices[(point + 1) * 3 + 1];
+		pointCloud[point * 3 + 2] = model->vertices[(point + 1) * 3 + 2];
+	
+	}
+	
+	for(int normal = 0; normal < pointCloudSize/3; normal++) {
+		
+		normalVector[normal * 3 + 0] = model->normals[(normal + 1) * 3 + 0];
+		normalVector[normal * 3 + 1] = model->normals[(normal + 1) * 3 + 1];
+		normalVector[normal * 3 + 2] = model->normals[(normal + 1) * 3 + 2];
+	
+	}
+
+	for(int indice = 0; indice < indicesSize/3; indice++) {
+		indices[indice * 3 + 0] = model->triangles[indice].vindices[0] - 1;
+		indices[indice * 3 + 1] = model->triangles[indice].vindices[1] - 1;
+		indices[indice * 3 + 2] = model->triangles[indice].vindices[2] - 1;
+	
+	}
+
+	delete model;
+
+}
+
+void Mesh::translate(float value, bool x, bool y, bool z) {
+
+	for(int point = 0; point < pointCloudSize/3; point++) {
+		
+		if(x) pointCloud[point * 3 + 0] += value;
+		if(y) pointCloud[point * 3 + 1] += value;
+		if(z) pointCloud[point * 3 + 2] += value;
+	
+	}
+
+}
+
+void Mesh::scale(float value) {
+
+	for(int point = 0; point < pointCloudSize/3; point++) {
+		
+		pointCloud[point * 3 + 0] *= value;
+		pointCloud[point * 3 + 1] *= value;
+		pointCloud[point * 3 + 2] *= value;
+	
+	}
 
 }

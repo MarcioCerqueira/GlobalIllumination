@@ -26,7 +26,6 @@ public:
 private:
 	GLfloat lightModelView[16];
 	GLfloat lightProjection[16];
-
 };
 
 #endif

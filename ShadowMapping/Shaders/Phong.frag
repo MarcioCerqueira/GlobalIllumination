@@ -6,15 +6,15 @@ uniform vec3 cameraPosition;
 vec4 phong()
 {
 
-   vec4 light_ambient = vec4(0.1f, 0.1f, 0.1f, 1);
-   vec4 light_specular = vec4(0.1f, 0.1f, 0.1f, 1);
+   vec4 light_ambient = vec4(0.1, 0.1, 0.1, 1);
+   vec4 light_specular = vec4(0.1, 0.1, 0.1, 1);
    vec4 light_diffuse = vec4(0.9, 0.9, 0.9, 1);
-   float shininess = 60.f;
+   float shininess = 60;
 
    vec3 L = normalize(lightPosition.xyz - v);   
    vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0)  
    vec3 R = normalize(-reflect(L, N));  
- 
+	
    //calculate Ambient Term:  
    vec4 Iamb = light_ambient;    
 
@@ -24,7 +24,7 @@ vec4 phong()
    // calculate Specular Term:
    vec4 Ispec = light_specular * pow(max(dot(R,E),0.0), 0.3 * shininess);
 
-   return gl_FrontLightModelProduct.sceneColor + gl_Color + Iamb + Idiff + Ispec;  
+   return gl_FrontLightModelProduct.sceneColor + Iamb + Idiff + Ispec;  
 
 }
 

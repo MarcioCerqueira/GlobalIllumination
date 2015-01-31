@@ -12,7 +12,7 @@ void MyGLTextureViewer::loadDepthComponentTexture(float *data, GLuint *texVBO, i
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, imageWidth, imageHeight, 0, GL_DEPTH_COMPONENT, GL_FLOAT, data);
 
 }
-
+	
 void MyGLTextureViewer::loadRGBTexture(const unsigned char *data, GLuint *texVBO, int index, int imageWidth, int imageHeight)
 {
 
