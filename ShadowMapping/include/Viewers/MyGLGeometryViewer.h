@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <GL/glew.h>
 #include <GL/glut.h>
+#include "Viewers/ShadowParams.h"
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/gtx/transform2.hpp"
@@ -15,12 +16,12 @@ class MyGLGeometryViewer
 
 public:
 	MyGLGeometryViewer();
-	void configureAmbient(GLfloat *eye, GLfloat *at, GLfloat *up);
 	void configureAmbient(int windowWidth, int windowHeight);
 	void configureLight();	
+	void configureLinearization();
 	void configurePhong(glm::vec3 lightPosition, glm::vec3 cameraPosition);
-	void configureShadow(glm::mat4 lightMVP, int shadowMapWidth, int shadowMapHeight);
-	void configurePSRMatrix(int xmin, int xmax, int ymin, int ymax, int width, int height);
+	void configureShadow(ShadowParams shadowParams);
+	void configurePSRMatrix(int xmin, int xmax, int ymin, int ymax, int scaleRange, int width, int height);
 	void drawPlane(float x, float y, float z);
 	void drawMesh(GLuint *VBOs, int numberOfIndices);
 	glm::mat4 getProjectionMatrix() { return projection; }

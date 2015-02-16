@@ -9,27 +9,6 @@ MyGLGeometryViewer::MyGLGeometryViewer()
 
 }
 
-void MyGLGeometryViewer::configureAmbient(GLfloat *eye, GLfloat *at, GLfloat *up) {
-
-	glEnable(GL_DEPTH_TEST);
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-
-    gluPerspective(60.0, (GLfloat)640.f/480.f, 0.01, 5000);
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-    gluLookAt(eye[0], eye[1], eye[2], at[0], at[1], at[2], up[0], up[1], up[2]);
-    
-	glMatrixMode(GL_TEXTURE);
-	glLoadIdentity();
-
-	glDisable(GL_LIGHTING);
-	glDisable(GL_ALPHA_TEST);
-	glDisable(GL_BLEND);
-	glEnable(GL_DEPTH_TEST);
-
-}
-
 void MyGLGeometryViewer::configureAmbient(int windowWidth, int windowHeight)
 {
 	
@@ -75,6 +54,16 @@ void MyGLGeometryViewer::configureLight() {
 
 }
 
+void MyGLGeometryViewer::configureLinearization()
+{
+
+	GLuint zNearID = glGetUniformLocation(shaderProg, "zNear");
+	glUniform1i(zNearID, zNear);
+	GLuint zFarID = glGetUniformLocation(shaderProg, "zFar");
+	glUniform1i(zFarID, zFar);
+	
+}
+
 void MyGLGeometryViewer::configurePhong(glm::vec3 lightPosition, glm::vec3 cameraPosition) 
 {
 
@@ -95,7 +84,7 @@ void MyGLGeometryViewer::configurePhong(glm::vec3 lightPosition, glm::vec3 camer
 
 }
 
-void MyGLGeometryViewer::configureShadow(glm::mat4 lightMVP, int shadowMapWidth, int shadowMapHeight) 
+void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams) 
 {
 	
 	glm::mat4 bias;
@@ -104,20 +93,58 @@ void MyGLGeometryViewer::configureShadow(glm::mat4 lightMVP, int shadowMapWidth,
 	bias[2][0] = 0;		bias[2][1] = 0;		bias[2][2] = 0.5;	bias[2][3] = 0.0;
 	bias[3][0] = 0.5;	bias[3][1] = 0.5;	bias[3][2] = 0.5;	bias[3][3] = 1.0;
 
-	lightMVP = bias * lightMVP;
+	shadowParams.lightMVP = bias * shadowParams.lightMVP;
 	GLuint lightMVPID = glGetUniformLocation(shaderProg, "lightMVP");
-	glUniformMatrix4fv(lightMVPID, 1, GL_FALSE, &lightMVP[0][0]);
+	glUniformMatrix4fv(lightMVPID, 1, GL_FALSE, &shadowParams.lightMVP[0][0]);
 	GLuint lightMVPInvID = glGetUniformLocation(shaderProg, "lightMVPInv");
-	glUniformMatrix4fv(lightMVPInvID, 1, GL_FALSE, &glm::inverse(lightMVP)[0][0]);
+	glUniformMatrix4fv(lightMVPInvID, 1, GL_FALSE, &glm::inverse(shadowParams.lightMVP)[0][0]);
 	GLuint shadowMapWidthID = glGetUniformLocation(shaderProg, "shadowMapWidth");
-	glUniform1i(shadowMapWidthID, shadowMapWidth);
+	glUniform1i(shadowMapWidthID, shadowParams.shadowMapWidth);
 	GLuint shadowMapHeightID = glGetUniformLocation(shaderProg, "shadowMapHeight");
-	glUniform1i(shadowMapHeightID, shadowMapHeight);
+	glUniform1i(shadowMapHeightID, shadowParams.shadowMapHeight);
+	GLuint shadowMapBilinearID = glGetUniformLocation(shaderProg, "bilinearPCF");
+	glUniform1i(shadowMapBilinearID, shadowParams.bilinearPCF);
+	GLuint shadowMapTriCubicID = glGetUniformLocation(shaderProg, "tricubicPCF");
+	glUniform1i(shadowMapTriCubicID, shadowParams.tricubicPCF);
+	GLuint shadowMapPoissonID = glGetUniformLocation(shaderProg, "poissonPCF");
+	glUniform1i(shadowMapPoissonID, shadowParams.poissonPCF);
+	GLuint shadowMapEdgeID = glGetUniformLocation(shaderProg, "edgePCF");
+	glUniform1i(shadowMapEdgeID, shadowParams.edgePCF);
+	GLuint shadowMapVSMID = glGetUniformLocation(shaderProg, "VSM");
+	glUniform1i(shadowMapVSMID, shadowParams.VSM);
+	GLuint shadowMapESMID = glGetUniformLocation(shaderProg, "ESM");
+	glUniform1i(shadowMapESMID, shadowParams.ESM);
+	GLuint shadowMapEVSMID = glGetUniformLocation(shaderProg, "EVSM");
+	glUniform1i(shadowMapEVSMID, shadowParams.EVSM);
+	GLuint shadowMapNaiveID = glGetUniformLocation(shaderProg, "naive");
+	glUniform1i(shadowMapNaiveID, shadowParams.naive);
+	GLuint shadowMap = glGetUniformLocation(shaderProg, "shadowMap");
+	glUniform1i(shadowMap, 0);
+	if(shadowParams.edgePCF) {
+		GLuint edgeMap = glGetUniformLocation(shaderProg, "edgeMap");
+		glUniform1i(edgeMap, 1);
+	}
+	configureLinearization();
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, shadowParams.shadowMap);
+	if(shadowParams.edgePCF) {
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, shadowParams.edgeMap);
+		glGenerateMipmap(GL_TEXTURE_2D);
+	}
+
+	glActiveTexture(GL_TEXTURE0);
+	glDisable(GL_TEXTURE_2D);
+	if(shadowParams.edgePCF) {
+		glActiveTexture(GL_TEXTURE1);
+		glDisable(GL_TEXTURE_2D);
+	}
 
 
 }
 
-void MyGLGeometryViewer::configurePSRMatrix(int xmin, int xmax, int ymin, int ymax, int width, int height) 
+void MyGLGeometryViewer::configurePSRMatrix(int xmin, int xmax, int ymin, int ymax, int scaleRange, int width, int height) 
 {
 
 	//In OpenGL, the interval [-1, 1] for the y-axis is from bottom to top.
@@ -140,8 +167,12 @@ void MyGLGeometryViewer::configurePSRMatrix(int xmin, int xmax, int ymin, int ym
 	float sy = 2.0/(normalizedYMax - normalizedYMin);
 	float ox = (-sx * (normalizedXMax + normalizedXMin))/2.0;
 	float oy = (-sy * (normalizedYMax + normalizedYMin))/2.0;
-	ox = ceil(ox * width)/width;
-	oy = ceil(oy * height)/height;
+	
+	sx = 1.0f / ceil(1.0f / sx * scaleRange) * scaleRange;
+	sy = 1.0f / ceil(1.0f / sy * scaleRange) * scaleRange;
+
+	ox = ceil(ox * (width/2))/(width/2);
+	oy = ceil(oy * (height/2))/(height/2);
 
 	psr[0][0] = sx;		psr[0][1] = 0;		psr[0][2] = 0;		psr[0][3] = 0.0;
 	psr[1][0] = 0;		psr[1][1] = sy;		psr[1][2] = 0;		psr[1][3] = 0.0;
@@ -164,8 +195,6 @@ void MyGLGeometryViewer::drawPlane(float x, float y, float z) {
 
 void MyGLGeometryViewer::drawMesh(GLuint *VBOs, int numberOfIndices)
 {
-
-	GLuint vbo_cube_texcoords;
 	
 	GLint attribute_vert = glGetAttribLocation(shaderProg, "vertex");
 	glEnableVertexAttribArray(attribute_vert);

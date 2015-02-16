@@ -26,66 +26,79 @@ void MyGLTextureViewer::loadRGBTexture(const unsigned char *data, GLuint *texVBO
 
 }
 
-void MyGLTextureViewer::loadShadowTextureMatrix(GLuint textureUnit) 
+void MyGLTextureViewer::loadRGBTexture(float *data, GLuint *texVBO, int index, int imageWidth, int imageHeight)
 {
 
-	// Moving from unit cube [-1,1] to [0,1]  
-	const GLfloat bias[16] = {	
-		0.5, 0.0, 0.0, 0.0, 
-		0.0, 0.5, 0.0, 0.0,
-		0.0, 0.0, 0.5, 0.0,
-	0.5, 0.5, 0.5, 1.0};	
-		
-	glMatrixMode(GL_TEXTURE);
-	glActiveTexture(textureUnit);
-		
-	glLoadIdentity();	
-	//glMultMatrixf(bias);
-	glMultMatrixf (lightProjection);
-	glMultMatrixf (lightModelView);	
 	
-	/*
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	glMultMatrixf (lightProjection);
+	glBindTexture(GL_TEXTURE_2D, texVBO[index]);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
+	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, imageWidth, imageHeight, 0, GL_RGB, GL_FLOAT, data);
+	glGenerateMipmap(GL_TEXTURE_2D);
 	
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-	glMultMatrixf (lightModelView);	
-	*/
-	//printf("%f %f %f %f\n", lightModelView[12], lightModelView[13], lightModelView[14], lightModelView[15]);
 }
 
+void MyGLTextureViewer::loadQuad()
+{
 
-void MyGLTextureViewer::drawTextureOnShader(GLuint *texVBO, int index, int windowWidth, int windowHeight, GLuint shaderProg)
+	/* init_resources */
+    GLfloat cube_texcoords[] = {
+      // front
+      -1.0, -1.0,
+      1.0, -1.0,
+      -1.0, 1.0,
+      1.0, 1.0
+    };
+    glGenBuffers(1, &vbo_cube_texcoords);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_texcoords);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(cube_texcoords), cube_texcoords, GL_STATIC_DRAW);
+
+	GLuint cube_elements[] = {
+	  // front
+	  3, 1, 0, 
+	  2, 3, 0
+	};
+	glGenBuffers(1, &ibo_cube_elements);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_cube_elements);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(cube_elements), cube_elements, GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+}
+
+void MyGLTextureViewer::drawTextureOnShader(GLuint texture, int imageWidth, int imageHeight)
 {
 
 	glUseProgram(shaderProg);
-	
-	gluOrtho2D( 0, windowWidth, windowHeight, 0 ); 
-	glMatrixMode( GL_MODELVIEW );
-	glLoadIdentity();
 
-	GLuint texLoc = glGetUniformLocation(shaderProg, "image");
-	glUniform1i(texLoc, 0);
+	GLuint width = glGetUniformLocation(shaderProg, "width");
+	glUniform1i(width, imageWidth);
+	GLuint height = glGetUniformLocation(shaderProg, "height");
+	glUniform1i(height, imageHeight);
+
+	GLuint shadowMap = glGetUniformLocation(shaderProg, "image");
+	glUniform1i(shadowMap, 0);
 	
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, texVBO[index]);
+	glBindTexture(GL_TEXTURE_2D, texture);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	
+	GLuint attribute_texcoord = glGetAttribLocation(shaderProg, "texcoord");
+    glEnableVertexAttribArray(attribute_texcoord);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_texcoords);
+    glVertexAttribPointer(attribute_texcoord, 2, GL_FLOAT, GL_FALSE, 0, 0);
+	
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_cube_elements);
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
-	glBegin(GL_QUADS);
-		glTexCoord2f(0.0f, 0.0f); 
-		glVertex2f(0.0f, 0.0f);
-		glTexCoord2f(1.0f, 0.0f); 
-		glVertex2f(windowWidth, 0.0f);
-		glTexCoord2f(1.0f, 1.0f); 
-		glVertex2f(windowWidth, windowHeight);
-		glTexCoord2f(0.0f, 1.0f); 
-		glVertex2f(0.0f, windowHeight);
-	glEnd();
-
+	glDisableVertexAttribArray(attribute_texcoord);
+    
 	glActiveTexture(GL_TEXTURE0);
 	glDisable(GL_TEXTURE_2D);
-	
+
 	glUseProgram(0);
 
 }
@@ -126,14 +139,5 @@ void MyGLTextureViewer::drawShadow(GLuint *texVBO, int sceneColorIndex, int shad
 	glDisable(GL_TEXTURE_2D);
 
 	glUseProgram(0);
-
-}
-
-void MyGLTextureViewer::saveShadowTextureMatrix() 
-{
-		
-	// Grab modelview and transformation matrices
-	glGetFloatv(GL_MODELVIEW_MATRIX, lightModelView);
-	glGetFloatv(GL_PROJECTION_MATRIX, lightProjection);	
 
 }
