@@ -5,6 +5,12 @@ Mesh::Mesh()
 	pointCloud = NULL;
 	normalVector = NULL;
 	indices = NULL;
+	textureCoords = NULL;
+	textures = NULL;
+	colors = NULL;
+	colorsSize = 0;
+	isTextureFromImage = false;
+	numberOfTextures = 0;
 }
 
 Mesh::~Mesh()
@@ -13,6 +19,12 @@ Mesh::~Mesh()
 	delete [] pointCloud;
 	delete [] normalVector;
 	delete [] indices;
+	if(textureCoordsSize > 0)
+		delete [] textureCoords;
+	if(colorsSize > 0)
+		delete [] colors;
+	if(isTextureFromImage)
+		delete [] textures;
 
 }
 
@@ -23,10 +35,16 @@ void Mesh::addObject(Mesh *mesh)
 		
 		pointCloudSize = mesh->getPointCloudSize();
 		indicesSize = mesh->getIndicesSize();
+		textureCoordsSize = mesh->getTextureCoordsSize();
+		numberOfTextures = mesh->getNumberOfTextures();
+		colorsSize = mesh->getColorsSize();
 
 		pointCloud = (float*)malloc(pointCloudSize * sizeof(float));
 		normalVector = (float*)malloc(pointCloudSize * sizeof(float));
+		textureCoords = (float*)malloc(textureCoordsSize * sizeof(float));
+		colors = (float*)malloc(colorsSize * sizeof(float));
 		indices = (int*)malloc(indicesSize * sizeof(int));
+		textures = (Image**)malloc(numberOfTextures * sizeof(Image));
 
 		for(int point = 0; point < pointCloudSize; point++)
 			pointCloud[point] = mesh->getPointCloud()[point];
@@ -34,17 +52,36 @@ void Mesh::addObject(Mesh *mesh)
 		for(int point = 0; point < pointCloudSize; point++)
 			normalVector[point] = mesh->getNormalVector()[point];
 
+		for(int coord = 0; coord < textureCoordsSize; coord++)
+			textureCoords[coord] = mesh->getTextureCoords()[coord];
+	
+		for(int color = 0; color < colorsSize; color++)
+			colors[color] = mesh->getColors()[color];
+
 		for(int index = 0; index < indicesSize; index++)
 			indices[index] = mesh->getIndices()[index];
 	
+		for(int tex = 0; tex < numberOfTextures; tex++) {
+			textures[tex] = new Image(mesh->getTexture()[tex]->getWidth(), mesh->getTexture()[tex]->getHeight(), 3);
+			memcpy(textures[tex]->getData(), mesh->getTexture()[tex]->getData(), mesh->getTexture()[tex]->getWidth() * mesh->getTexture()[tex]->getHeight() * 3 * sizeof(unsigned char));
+		}
+
+		if(numberOfTextures > 0) isTextureFromImage = true;
+
 	} else {
 		
 		int prevPointCloudSize = pointCloudSize;
+		int prevTextureCoordsSize = textureCoordsSize;
+		int prevColorsSize = colorsSize;
 		int prevIndicesSize = indicesSize;
+		int prevNumberOfTextures = numberOfTextures;
 
 		float *prevPointCloud = (float*)malloc(pointCloudSize * sizeof(float));
 		float *prevNormalVector = (float*)malloc(pointCloudSize * sizeof(float));
+		float *prevTextureCoords = (float*)malloc(textureCoordsSize * sizeof(float));
+		float *prevColors = (float*)malloc(colorsSize * sizeof(float));
 		int *prevIndices = (int*)malloc(indicesSize * sizeof(int));
+		Image **prevTextures = (Image**)malloc(numberOfTextures * sizeof(Image));
 
 		for(int point = 0; point < pointCloudSize; point++)
 			prevPointCloud[point] = pointCloud[point];
@@ -52,19 +89,39 @@ void Mesh::addObject(Mesh *mesh)
 		for(int point = 0; point < pointCloudSize; point++)
 			prevNormalVector[point] = normalVector[point];
 
+		for(int coord = 0; coord < prevTextureCoordsSize; coord++)
+			prevTextureCoords[coord] = textureCoords[coord];
+
+		for(int color = 0; color < colorsSize; color++)
+			prevColors[color] = colors[color];
+
 		for(int index = 0; index < indicesSize; index++)
 			prevIndices[index] = indices[index];
 	
+		for(int tex = 0; tex < prevNumberOfTextures; tex++) {
+			prevTextures[tex] = new Image(textures[tex]->getWidth(), textures[tex]->getHeight(), 3);
+			memcpy(prevTextures[tex]->getData(), textures[tex]->getData(), textures[tex]->getWidth() * textures[tex]->getHeight() * 3 * sizeof(unsigned char));
+		}
+
 		delete [] pointCloud;
 		delete [] normalVector;
+		delete [] textureCoords;
+		delete [] colors;
 		delete [] indices;
+		delete [] textures;
 
 		pointCloudSize = prevPointCloudSize + mesh->getPointCloudSize();
+		textureCoordsSize = prevTextureCoordsSize + mesh->getTextureCoordsSize();
+		colorsSize = prevColorsSize + mesh->getColorsSize();
 		indicesSize = prevIndicesSize + mesh->getIndicesSize();
+		numberOfTextures = prevNumberOfTextures + mesh->getNumberOfTextures();
 
 		pointCloud = (float*)malloc(pointCloudSize * sizeof(float));
 		normalVector = (float*)malloc(pointCloudSize * sizeof(float));
+		textureCoords = (float*)malloc(textureCoordsSize * sizeof(float));
+		colors = (float*)malloc(colorsSize * sizeof(float));
 		indices = (int*)malloc(indicesSize * sizeof(int));
+		textures = (Image**)malloc(numberOfTextures * sizeof(Image));
 
 		for(int point = 0; point < prevPointCloudSize; point++)
 			pointCloud[point] = prevPointCloud[point];
@@ -72,102 +129,58 @@ void Mesh::addObject(Mesh *mesh)
 		for(int point = 0; point < prevPointCloudSize; point++)
 			normalVector[point] = prevNormalVector[point];
 
+		for(int coord = 0; coord < prevTextureCoordsSize; coord++)
+			textureCoords[coord] = prevTextureCoords[coord];
+
+		for(int color = 0; color < prevColorsSize; color++)
+			colors[color] = prevColors[color];
+
 		for(int index = 0; index < prevIndicesSize; index++)
 			indices[index] = prevIndices[index];
 	
+		for(int tex = 0; tex < prevNumberOfTextures; tex++) {
+			textures[tex] = new Image(prevTextures[tex]->getWidth(), prevTextures[tex]->getHeight(), 3);
+			memcpy(textures[tex]->getData(), prevTextures[tex]->getData(), prevTextures[tex]->getWidth() * prevTextures[tex]->getHeight() * 3 * sizeof(unsigned char));
+		}
+
 		for(int point = prevPointCloudSize; point < pointCloudSize; point++)
 			pointCloud[point] = mesh->getPointCloud()[point - prevPointCloudSize];
 
 		for(int point = prevPointCloudSize; point < pointCloudSize; point++)
 			normalVector[point] = mesh->getNormalVector()[point - prevPointCloudSize];
 
+		for(int coord = prevTextureCoordsSize; coord < textureCoordsSize; coord++)
+			textureCoords[coord] = mesh->getTextureCoords()[coord - prevTextureCoordsSize];
+	
+		for(int color = prevColorsSize; color < colorsSize; color++)
+			colors[color] = mesh->getColors()[color - prevColorsSize];
+
 		for(int index = prevIndicesSize; index < indicesSize; index++)
 			indices[index] = mesh->getIndices()[index - prevIndicesSize] + prevPointCloudSize/3;
 	
+		for(int tex = prevNumberOfTextures; tex < numberOfTextures; tex++) {
+			textures[tex] = new Image(mesh->getTexture()[tex]->getWidth(), mesh->getTexture()[tex]->getHeight(), 3);
+			memcpy(textures[tex]->getData(), mesh->getTexture()[tex]->getData(), mesh->getTexture()[tex]->getWidth() * mesh->getTexture()[tex]->getHeight() * 3 * sizeof(unsigned char));
+		}
+
+		if(numberOfTextures > 0) isTextureFromImage = true;
+
 		delete [] prevPointCloud;
 		delete [] prevNormalVector;
 		delete [] prevIndices;
+		delete [] prevTextureCoords;
+		delete [] prevColors;
+		delete [] prevTextures;
 
 	}
 	
 }
 
-void Mesh::buildCube(float x, float y, float z)
-{
-
-	pointCloudSize = 24;
-	indicesSize = 36;
-
-	pointCloud = (float*)malloc(pointCloudSize * sizeof(float));
-	normalVector = (float*)malloc(pointCloudSize * sizeof(float));
-	indices = (int*)malloc(indicesSize * sizeof(int));
-
-	this->pointCloudSize = pointCloudSize;
-	this->indicesSize = indicesSize;
-
-	pointCloud[0] = -x;	pointCloud[1] = y;	pointCloud[2] = z;
-	pointCloud[3] = -x;	pointCloud[4] = -y;	pointCloud[5] = z;
-	pointCloud[6] = x;	pointCloud[7] = -y;	pointCloud[8] = z;
-	pointCloud[9] = x;	pointCloud[10] = y;	pointCloud[11] = z;
-	pointCloud[12] = -x;	pointCloud[13] = y;	pointCloud[14] = -z;
-	pointCloud[15] = -x;	pointCloud[16] = -y;	pointCloud[17] = -z;
-	pointCloud[18] = x;	pointCloud[19] = -y;	pointCloud[20] = -z;
-	pointCloud[21] = x;	pointCloud[22] = y;	pointCloud[23] = -z;
-
-	normalVector[0] = -x;	normalVector[1] = y;	normalVector[2] = z;
-	normalVector[3] = -x;	normalVector[4] = -y;	normalVector[5] = z;
-	normalVector[6] = x;	normalVector[7] = -y;	normalVector[8] = z;
-	normalVector[9] = x;	normalVector[10] = y;	normalVector[11] = z;
-	normalVector[12] = -x;	normalVector[13] = y;	normalVector[14] = -z;
-	normalVector[15] = -x;	normalVector[16] = -y;	normalVector[17] = -z;
-	normalVector[18] = x;	normalVector[19] = -y;	normalVector[20] = -z;
-	normalVector[21] = x;	normalVector[22] = y;	normalVector[23] = -z;
-
-	indices[0] = 0;	indices[1] = 1;	indices[2] = 2;
-	indices[3] = 0;	indices[4] = 2;	indices[5] = 3;
-	indices[6] = 4;	indices[7] = 5;	indices[8] = 1;
-	indices[9] = 4;	indices[10] = 1;	indices[11] = 0;
-	indices[12] = 7;	indices[13] = 6;	indices[14] = 5;
-	indices[15] = 7;	indices[16] = 5;	indices[17] = 4;
-	indices[18] = 3;	indices[19] = 2;	indices[20] = 6;
-	indices[21] = 3;	indices[22] = 6;	indices[23] = 7;
-	indices[24] = 4;	indices[25] = 0;	indices[26] = 3;
-	indices[27] = 4;	indices[28] = 3;	indices[29] = 7;
-	indices[30] = 6;	indices[31] = 2;	indices[32] = 1;
-	indices[33] = 6;	indices[34] = 1;	indices[35] = 5;
-
-}
-
-void Mesh::buildPlane(float x, float y, float z) 
-{
-
-	pointCloudSize = 12;
-	indicesSize = 6;
-
-	pointCloud = (float*)malloc(pointCloudSize * sizeof(float));
-	normalVector = (float*)malloc(pointCloudSize * sizeof(float));
-	indices = (int*)malloc(indicesSize * sizeof(int));
-
-	this->pointCloudSize = pointCloudSize;
-	this->indicesSize = indicesSize;
-
-	pointCloud[0] = -x;	pointCloud[1] = +y; pointCloud[2] = -z;
-	pointCloud[3] = +x; pointCloud[4] = +y; pointCloud[5] = -z;
-	pointCloud[6] = +x; pointCloud[7] = +y; pointCloud[8] = +z;
-	pointCloud[9] = -x; pointCloud[10] = +y; pointCloud[11] = +z;
-
-	normalVector[0] = -x; normalVector[1] = +y; normalVector[2] = -z;
-	normalVector[3] = +x; normalVector[4] = +y; normalVector[5] = -z;
-	normalVector[6] = +x; normalVector[7] = +y; normalVector[8] = +z;
-	normalVector[9] = -x; normalVector[10] = +y; normalVector[11] = +z;
-
-	indices[0] = 0; indices[1] = 1; indices[2] = 2;
-	indices[3] = 0; indices[4] = 2; indices[5] = 3;
-
-}
-
 void Mesh::computeNormals()
 {
+
+	if(normalVector == NULL)
+		normalVector = (float*)malloc(pointCloudSize * sizeof(float));
 
 	std::vector <int> nb_seen;
 	nb_seen.resize(pointCloudSize/3);
@@ -204,17 +217,37 @@ void Mesh::computeNormals()
 
 }
 
+void Mesh::computeCentroid(float *centroid)
+{
+
+	
+	for(int axis = 0; axis < 3; axis++)
+		centroid[axis] = 0;
+
+	for(int point = 0; point < pointCloudSize/3; point++) {
+		for(int axis = 0; axis < 3; axis++)
+			centroid[axis] += pointCloud[point * 3 + axis];
+	}
+
+	for(int axis = 0; axis < 3; axis++)
+		centroid[axis] /= pointCloudSize/3;
+
+
+}
+
 void Mesh::loadOBJFile(char *filename)
 {
 
 	GLMmodel *model = glmReadOBJ(filename);
-	
+
 	pointCloudSize = model->numvertices * 3;
 	indicesSize = model->numtriangles * 3;
+	textureCoordsSize = model->numtexcoords * 2;
 
 	pointCloud = (float*)malloc(pointCloudSize * sizeof(float));
-	normalVector = (float*)malloc(pointCloudSize * sizeof(float));
+	if(model->numnormals > 0) normalVector = (float*)malloc(pointCloudSize * sizeof(float));
 	indices = (int*)malloc(indicesSize * sizeof(int));
+	textureCoords = (float*)malloc(textureCoordsSize * sizeof(float));
 
 	for(int point = 0; point < pointCloudSize/3; point++) {
 		
@@ -224,45 +257,136 @@ void Mesh::loadOBJFile(char *filename)
 	
 	}
 	
-	for(int normal = 0; normal < pointCloudSize/3; normal++) {
+	if(model->numnormals > 0) {
 		
-		normalVector[normal * 3 + 0] = model->normals[(normal + 1) * 3 + 0];
-		normalVector[normal * 3 + 1] = model->normals[(normal + 1) * 3 + 1];
-		normalVector[normal * 3 + 2] = model->normals[(normal + 1) * 3 + 2];
+		for(int normal = 0; normal < pointCloudSize/3; normal++) {
+		
+			normalVector[normal * 3 + 0] = model->normals[(normal + 1) * 3 + 0];
+			normalVector[normal * 3 + 1] = model->normals[(normal + 1) * 3 + 1];
+			normalVector[normal * 3 + 2] = model->normals[(normal + 1) * 3 + 2];
 	
+		}
+
 	}
 
 	for(int indice = 0; indice < indicesSize/3; indice++) {
+
 		indices[indice * 3 + 0] = model->triangles[indice].vindices[0] - 1;
 		indices[indice * 3 + 1] = model->triangles[indice].vindices[1] - 1;
 		indices[indice * 3 + 2] = model->triangles[indice].vindices[2] - 1;
 	
 	}
 
+	for(int coord = 0; coord < textureCoordsSize/2; coord++) {
+
+		textureCoords[coord * 2 + 0] = model->texcoords[(coord + 1) * 2 + 0];
+		textureCoords[coord * 2 + 1] = model->texcoords[(coord + 1) * 2 + 1];
+		
+	}
+	
 	delete model;
 
 }
 
-void Mesh::translate(float value, bool x, bool y, bool z) {
+void Mesh::loadTexture(char *filename) {
+
+	if(numberOfTextures == 0) {
+
+		textures = (Image**)malloc(sizeof(Image));
+		textures[numberOfTextures] = new Image(filename);
+		numberOfTextures++;
+		isTextureFromImage = true;
+	
+	} else {
+		
+		int prevNumberOfTextures = numberOfTextures;
+		Image **prevTextures = (Image**)malloc(numberOfTextures * sizeof(Image));
+
+		for(int tex = 0; tex < prevNumberOfTextures; tex++) {
+			prevTextures[tex] = new Image(textures[tex]->getWidth(), textures[tex]->getHeight(), 3);
+			memcpy(prevTextures[tex]->getData(), textures[tex]->getData(), textures[tex]->getWidth() * textures[tex]->getHeight() * 3 * sizeof(unsigned char));
+		}
+
+		delete [] textures;
+
+		textures = (Image**)malloc((numberOfTextures + 1) * sizeof(Image));
+
+		for(int tex = 0; tex < prevNumberOfTextures; tex++) {
+			textures[tex] = new Image(prevTextures[tex]->getWidth(), prevTextures[tex]->getHeight(), 3);
+			memcpy(textures[tex]->getData(), prevTextures[tex]->getData(), prevTextures[tex]->getWidth() * prevTextures[tex]->getHeight() * 3 * sizeof(unsigned char));
+		}
+
+		textures[numberOfTextures] = new Image(filename);
+		numberOfTextures++;
+		isTextureFromImage = true;
+
+	}
+
+}
+
+void Mesh::setBaseColor(float r, float g, float b) {
+
+	colorsSize = pointCloudSize;
+	colors = (float*)malloc(colorsSize * sizeof(float));
+
+	for(int color = 0; color < colorsSize/3; color++) {
+		colors[color * 3 + 0] = r;
+		colors[color * 3 + 1] = g;
+		colors[color * 3 + 2] = b;
+	}
+
+}
+
+void Mesh::translate(float x, float y, float z) {
 
 	for(int point = 0; point < pointCloudSize/3; point++) {
 		
-		if(x) pointCloud[point * 3 + 0] += value;
-		if(y) pointCloud[point * 3 + 1] += value;
-		if(z) pointCloud[point * 3 + 2] += value;
+		pointCloud[point * 3 + 0] += x;
+		pointCloud[point * 3 + 1] += y;
+		pointCloud[point * 3 + 2] += z;
 	
 	}
 
 }
 
-void Mesh::scale(float value) {
+void Mesh::scale(float x, float y, float z) {
 
 	for(int point = 0; point < pointCloudSize/3; point++) {
 		
-		pointCloud[point * 3 + 0] *= value;
-		pointCloud[point * 3 + 1] *= value;
-		pointCloud[point * 3 + 2] *= value;
+		pointCloud[point * 3 + 0] *= x;
+		pointCloud[point * 3 + 1] *= y;
+		pointCloud[point * 3 + 2] *= z;
 	
+	}
+
+}
+
+void Mesh::rotate(float x, float y, float z) {
+
+	glm::mat4 rotationMatrix = glm::rotate(x, glm::vec3(1, 0, 0));
+	rotationMatrix *= glm::rotate(y, glm::vec3(0, 1, 0));
+	rotationMatrix *= glm::rotate(z, glm::vec3(0, 0, 1));
+	rotationMatrix = glm::transpose(rotationMatrix);
+
+	float rotX, rotY, rotZ;
+	for(int point = 0; point < pointCloudSize/3; point++) {
+		
+		rotX = pointCloud[point * 3 + 0] * rotationMatrix[0][0] + pointCloud[point * 3 + 1] * rotationMatrix[0][1] + pointCloud[point * 3 + 2] * rotationMatrix[0][2];
+		rotY = pointCloud[point * 3 + 0] * rotationMatrix[1][0] + pointCloud[point * 3 + 1] * rotationMatrix[1][1] + pointCloud[point * 3 + 2] * rotationMatrix[1][2];
+		rotZ = pointCloud[point * 3 + 0] * rotationMatrix[2][0] + pointCloud[point * 3 + 1] * rotationMatrix[2][1] + pointCloud[point * 3 + 2] * rotationMatrix[2][2];
+		
+		pointCloud[point * 3 + 0] = rotX;
+		pointCloud[point * 3 + 1] = rotY;
+		pointCloud[point * 3 + 2] = rotZ;
+		
+		rotX = normalVector[point * 3 + 0] * rotationMatrix[0][0] + normalVector[point * 3 + 1] * rotationMatrix[0][1] + normalVector[point * 3 + 2] * rotationMatrix[0][2];
+		rotY = normalVector[point * 3 + 0] * rotationMatrix[1][0] + normalVector[point * 3 + 1] * rotationMatrix[1][1] + normalVector[point * 3 + 2] * rotationMatrix[1][2];
+		rotZ = normalVector[point * 3 + 0] * rotationMatrix[2][0] + normalVector[point * 3 + 1] * rotationMatrix[2][1] + normalVector[point * 3 + 2] * rotationMatrix[2][2];
+		
+		normalVector[point * 3 + 0] = rotX;
+		normalVector[point * 3 + 1] = rotY;
+		normalVector[point * 3 + 2] = rotZ;
+
 	}
 
 }

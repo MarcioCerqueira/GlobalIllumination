@@ -18,9 +18,6 @@ void main()
 	depth = depth * 0.5 + 0.5;
 	depth = linearize(depth);
 	
-	float c = 1280.0;
-	float exponential = exp(c * depth);
-
-	gl_FragColor = vec4(exponential, 0.0, 0.0, 1.0);
+	gl_FragColor = vec4(depth, 0.0, 0.0, 1.0);
 
 }

@@ -1,6 +1,10 @@
 varying vec4 position;
 uniform int zNear;
 uniform int zFar;
+uniform int VSM;
+uniform int MSM;
+uniform vec4 tQuantization;
+uniform mat4 mQuantization;
 
 float linearize(float depth) {
 
@@ -13,18 +17,34 @@ float linearize(float depth) {
 
 void main()
 {	
-
+	
 	float depth = position.z / position.w;
 	depth = depth * 0.5 + 0.5;
 	depth = linearize(depth);
+
+	vec4 moment;
+
+	moment.x = depth;
+	moment.y = depth * depth;
+
+	if(VSM == 1) {
 	
-	float moment1 = depth;
-	float moment2 = depth * depth;
+		float dx = dFdx(depth);
+		float dy = dFdy(depth);
+		moment.y += 0.25 * (dx*dx+dy*dy);
+		moment.z = 0.0;
+		moment.w = 0.0;
+	
+	} else {
 
-	float dx = dFdx(depth);
-	float dy = dFdy(depth);
-	moment2 += 0.25 * (dx*dx+dy*dy);
+		moment.z = depth * depth * depth;
+		moment.w = depth * depth * depth * depth;
 
-	gl_FragColor = vec4(moment1, moment2, 0.0, 1.0);
+		//Optimized moment quantization
+		moment = mQuantization * moment + tQuantization;
+		
+	}
+
+	gl_FragColor = moment;
 
 }

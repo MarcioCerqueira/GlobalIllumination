@@ -6,6 +6,8 @@
 typedef struct ShadowParams
 {
 	glm::mat4 lightMVP;
+	glm::mat4 lightMV;
+	glm::mat4 lightP;
 	int shadowMapWidth;
 	int shadowMapHeight;
 	bool tricubicPCF;
@@ -15,7 +17,9 @@ typedef struct ShadowParams
 	bool VSM;
 	bool ESM;
 	bool EVSM;
+	bool MSM; //Hamburger
 	bool naive;
+	bool adaptiveDepthBias;
 	GLuint shadowMap;
 	GLuint edgeMap;
 } ShadowParams;

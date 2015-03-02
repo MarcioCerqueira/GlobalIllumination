@@ -11,7 +11,10 @@
 //Exponential variance shadow maps. A. Lauritzen and Michael McCool. Layered Variance Shadow Maps. 2008
 //Solving temporal aliasing for fitting - F. Zhang et al. Practical Cascaded Shadow Maps. 2009
 //Reference book - E. Eisemann et al. Real-Time Shadows. 2011
-//http://rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling/
+//Moment shadow mapping - C. Peters and R. Klein. Moment shadow mapping. 2015
+//http://rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling/ for gaussian mask weights
+//http://www.3drender.com/challenges/ (.obj, .mtl)
+//http://pt.slideshare.net/march1n0/probabilistic-approaches-to-shadow-maps-filtering-presentation for 32-bits ESM
 
 #include <stdlib.h>
 #include <GL/glew.h>
@@ -21,6 +24,7 @@
 #include "Viewers\MyGLGeometryViewer.h"
 #include "Viewers\shader.h"
 #include "Viewers\ShadowParams.h"
+#include "IO\SceneLoader.h"
 #include "Mesh.h"
 #include "Image.h"
 
@@ -42,18 +46,19 @@ enum
 	MOMENTS_SHADER = 3,
 	GAUSSIAN_X_SHADER = 4,
 	GAUSSIAN_Y_SHADER = 5,
-	SHADOW_ONLY_SHADER = 6,
-	SOBEL_SHADER = 7,
+	LOG_GAUSSIAN_X_SHADER = 6,
+	LOG_GAUSSIAN_Y_SHADER = 7,
 	EXPONENTIAL_SHADER = 8,
 	EXPONENTIAL_MOMENT_SHADER = 9
 };
 
+bool temp = false;
 //Window size
 int windowWidth = 640;
 int windowHeight = 480;
 
-int shadowMapWidth = 640 * 2;
-int shadowMapHeight = 480 * 2;
+int shadowMapWidth = 640;
+int shadowMapHeight = 480;
 
 int PSRMapWidth = 640;
 int PSRMapHeight = 480;
@@ -67,15 +72,15 @@ MyGLTextureViewer myGLTextureViewer;
 MyGLGeometryViewer myGLGeometryViewer;
 ShadowParams shadowParams;
 
-Mesh *cube;
-Mesh *plane;
-Mesh *suzanne;
 Mesh *scene;
+SceneLoader *sceneLoader;
 
 Image *lightView;
 
 GLuint textures[10];
-GLuint sceneVBO[4];
+GLuint sceneVBO[5];
+GLuint sceneTextures[4];
+
 GLuint shadowFrameBuffer;
 GLuint sceneFrameBuffer;
 GLuint gaussianXFrameBuffer;
@@ -85,22 +90,27 @@ glm::vec3 cameraEye;
 glm::vec3 cameraAt;
 glm::vec3 cameraUp;
 glm::vec3 lightEye;
+glm::vec3 lightAt;
 glm::mat4 lightMVP;	
 glm::mat4 lightMV;
+glm::mat4 lightP;
 
 GLuint ProgramObject = 0;
 GLuint VertexShaderObject = 0;
 GLuint FragmentShaderObject = 0;
-GLuint shaderVS, shaderFS, shaderProg[10];   // handles to objects
+GLuint shaderVS, shaderFS, shaderProg[15];   // handles to objects
 GLint  linked;
 
 float translationVector[3] = {0.0, 0.0, 0.0};
+float lightTranslationVector[3] = {0.0, 0.0, 0.0};
 float rotationAngles[3] = {0.0, 0.0, 0.0};
 
 bool translationOn = false;
+bool lightTranslationOn = false;
 bool rotationOn = false;
 bool psrOn = false;
 bool animationOn = false;
+bool cameraOn = false;
 
 int vel = 1;
 int animation = -1800;
@@ -140,7 +150,7 @@ void displayScene()
 	glm::mat4 view = myGLGeometryViewer.getViewMatrix();
 	glm::mat4 model = myGLGeometryViewer.getModelMatrix();
 	
-	//model *= glm::translate(glm::vec3(translationVector[0], translationVector[1], translationVector[2]));
+	model *= glm::translate(glm::vec3(translationVector[0], translationVector[1], translationVector[2]));
 	model *= glm::rotate(rotationAngles[0], glm::vec3(1, 0, 0));
 	model *= glm::rotate(rotationAngles[1], glm::vec3(0, 1, 0));
 	model *= glm::rotate(rotationAngles[2], glm::vec3(0, 0, 1));
@@ -150,22 +160,21 @@ void displayScene()
 	myGLGeometryViewer.setModelMatrix(model);
 	myGLGeometryViewer.configurePhong(lightEye, cameraEye);
 	
-	glColor3f(0.0, 1.0, 0.0);
-	myGLGeometryViewer.loadVBOs(sceneVBO, scene->getPointCloud(), scene->getNormalVector(), scene->getIndices(), scene->getPointCloudSize(), scene->getIndicesSize());
-	myGLGeometryViewer.drawMesh(sceneVBO, scene->getIndicesSize());
+	//glColor3f(0.0, 1.0, 0.0);
+	myGLGeometryViewer.loadVBOs(sceneVBO, scene);
+	myGLGeometryViewer.drawMesh(sceneVBO, scene->getIndicesSize(), scene->getTextureCoordsSize(), scene->getColorsSize(), scene->textureFromImage(), sceneTextures[0]);
 
 }
 
 void updateLight()
 {
 
-	lightEye[0] = 10.0 + translationVector[0];
-	lightEye[1] = 100.0 + translationVector[1];
-	lightEye[2] = 100.0 + translationVector[2];
-	
+	lightEye[0] = sceneLoader->getLightPosition()[0] + lightTranslationVector[0];
+	lightEye[1] = sceneLoader->getLightPosition()[1] + lightTranslationVector[1];
+	lightEye[2] = sceneLoader->getLightPosition()[2] + lightTranslationVector[2];
+
 	if(animationOn)
 		lightEye = glm::mat3(glm::rotate((float)animation/10, glm::vec3(0, 1, 0))) * lightEye;
-
 
 }
 
@@ -176,9 +185,10 @@ void displaySceneFromLightPOV()
 	
 	updateLight();
 	
-	if(shadowParams.VSM) {
+	if(shadowParams.VSM || shadowParams.MSM) {
 		glUseProgram(shaderProg[MOMENTS_SHADER]);
 		myGLGeometryViewer.setShaderProg(shaderProg[MOMENTS_SHADER]);
+		myGLGeometryViewer.configureMoments(shadowParams);
 		myGLGeometryViewer.configureLinearization();
 	} else if(shadowParams.ESM) {
 		glUseProgram(shaderProg[EXPONENTIAL_SHADER]);
@@ -193,13 +203,15 @@ void displaySceneFromLightPOV()
 		myGLGeometryViewer.setShaderProg(shaderProg[PHONG_SHADER]);
 	}
 	
-	glEnable(GL_CULL_FACE);
-	glCullFace(GL_FRONT);
+	//if(!shadowParams.ESM) {
+		//glEnable(GL_CULL_FACE);
+		//glCullFace(GL_BACK);
+	//}
 	glPolygonOffset(2.5f, 10.0f);
 	glEnable(GL_POLYGON_OFFSET_FILL);
 	
 	myGLGeometryViewer.setEye(lightEye);
-	myGLGeometryViewer.setLook(cameraAt);
+	myGLGeometryViewer.setLook(lightAt);
 	myGLGeometryViewer.setUp(cameraUp);
 	myGLGeometryViewer.configureAmbient(shadowMapWidth, shadowMapHeight);
 	
@@ -207,7 +219,7 @@ void displaySceneFromLightPOV()
 	glm::mat4 view = myGLGeometryViewer.getViewMatrix();
 	glm::mat4 model = myGLGeometryViewer.getModelMatrix();
 	
-	//model *= glm::translate(glm::vec3(translationVector[0], translationVector[1], translationVector[2]));
+	model *= glm::translate(glm::vec3(translationVector[0], translationVector[1], translationVector[2]));
 	model *= glm::rotate(rotationAngles[0], glm::vec3(1, 0, 0));
 	model *= glm::rotate(rotationAngles[1], glm::vec3(0, 1, 0));
 	model *= glm::rotate(rotationAngles[2], glm::vec3(0, 0, 1));
@@ -221,7 +233,9 @@ void displaySceneFromLightPOV()
 	}
 
 	lightMVP = projection * view * model;
-	
+	lightMV = view * model;
+	lightP = projection;
+
 	displayScene();
 	glUseProgram(0);
 
@@ -238,12 +252,14 @@ void displaySceneFromCameraPOV()
 
 	glUseProgram(shaderProg[SHADOW_MAPPING_SHADER]);
 	myGLGeometryViewer.setShaderProg(shaderProg[SHADOW_MAPPING_SHADER]);
-	if(shadowParams.VSM || shadowParams.ESM || shadowParams.EVSM) 
+	if(shadowParams.VSM || shadowParams.ESM || shadowParams.EVSM || shadowParams.MSM) 
 		shadowParams.shadowMap = textures[GAUSSIAN_Y_MAP_COLOR];
 	else
 		shadowParams.shadowMap = textures[SHADOW_MAP_DEPTH];
 	
 	shadowParams.lightMVP = lightMVP;
+	shadowParams.lightMV = lightMV;
+	shadowParams.lightP = lightP;
 	myGLGeometryViewer.setEye(cameraEye);
 	myGLGeometryViewer.setLook(cameraAt);
 	myGLGeometryViewer.setUp(cameraUp);
@@ -272,7 +288,7 @@ void computePSR()
 	
 	myGLGeometryViewer.setShaderProg(shaderProg[PSR_SHADER]);
 	myGLGeometryViewer.setEye(lightEye);
-	myGLGeometryViewer.setLook(cameraAt);
+	myGLGeometryViewer.setLook(lightAt);
 	myGLGeometryViewer.setUp(cameraUp);
 	myGLGeometryViewer.configureAmbient(PSRMapWidth, PSRMapHeight);
 	
@@ -280,7 +296,7 @@ void computePSR()
 	glm::mat4 view = myGLGeometryViewer.getViewMatrix();
 	glm::mat4 model = myGLGeometryViewer.getModelMatrix();
 	
-	//model *= glm::translate(glm::vec3(translationVector[0], translationVector[1], translationVector[2]));
+	model *= glm::translate(glm::vec3(translationVector[0], translationVector[1], translationVector[2]));
 	model *= glm::rotate(rotationAngles[0], glm::vec3(1, 0, 0));
 	model *= glm::rotate(rotationAngles[1], glm::vec3(0, 1, 0));
 	model *= glm::rotate(rotationAngles[2], glm::vec3(0, 0, 1));
@@ -300,34 +316,47 @@ void display()
 	if(psrOn)
 		computePSR();
 	
+	//Rob Basler in http://fabiensanglard.net/shadowmappingVSM/ found out that the color buffer, 
+	//when used to store depth, should be cleared to 1.0 to run properly
 	
+	glClearColor(1.0f, 1.0f, 1.0f, 1.0);
 	glBindFramebuffer(GL_FRAMEBUFFER, shadowFrameBuffer);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	displaySceneFromLightPOV();
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);	
 	
-	
-	if(shadowParams.VSM || shadowParams.ESM || shadowParams.EVSM) {
+	if(shadowParams.VSM || shadowParams.ESM || shadowParams.EVSM || shadowParams.MSM) {
 
 		glBindFramebuffer(GL_FRAMEBUFFER, gaussianXFrameBuffer);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glViewport(0, 0, windowWidth, windowHeight);
-		myGLTextureViewer.setShaderProg(shaderProg[GAUSSIAN_X_SHADER]);
+		if(shadowParams.VSM || shadowParams.MSM)
+			myGLTextureViewer.setShaderProg(shaderProg[GAUSSIAN_X_SHADER]);
+		else
+			myGLTextureViewer.setShaderProg(shaderProg[LOG_GAUSSIAN_X_SHADER]);
 		myGLTextureViewer.drawTextureOnShader(textures[SHADOW_MAP_COLOR], windowWidth, windowHeight);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);		
 		
 		glBindFramebuffer(GL_FRAMEBUFFER, gaussianYFrameBuffer);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glViewport(0, 0, windowWidth, windowHeight);
-		myGLTextureViewer.setShaderProg(shaderProg[GAUSSIAN_Y_SHADER]);
+		if(shadowParams.VSM || shadowParams.MSM)
+			myGLTextureViewer.setShaderProg(shaderProg[GAUSSIAN_Y_SHADER]);
+		else
+			myGLTextureViewer.setShaderProg(shaderProg[LOG_GAUSSIAN_Y_SHADER]);
 		myGLTextureViewer.drawTextureOnShader(textures[GAUSSIAN_X_MAP_COLOR], windowWidth, windowHeight);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);		
 		
+		//we must build the mip-map version of the final blurred map in order to VSM run correctly
+		glBindTexture(GL_TEXTURE_2D, textures[GAUSSIAN_Y_MAP_COLOR]);
+		glGenerateMipmap(GL_TEXTURE_2D);
+
 	}
 	
 	glDisable(GL_CULL_FACE);
 	glDisable(GL_POLYGON_OFFSET_FILL);
 	
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0);
 	displaySceneFromCameraPOV();
 	
 	glutSwapBuffers();
@@ -358,6 +387,7 @@ void resetShadowParams()
 	shadowParams.VSM = false;
 	shadowParams.ESM = false;
 	shadowParams.EVSM = false;
+	shadowParams.MSM = false;
 	shadowParams.naive = false;
 		
 }
@@ -376,6 +406,10 @@ void keyboard(unsigned char key, int x, int y)
 		break;
 	case 'r':
 		rotationOn = true;
+		translationOn = false;
+		break;
+	case 'q':
+		lightTranslationOn = !lightTranslationOn;
 		translationOn = false;
 		break;
 	case 'p':
@@ -409,12 +443,29 @@ void keyboard(unsigned char key, int x, int y)
 		resetShadowParams();
 		shadowParams.EVSM = true;
 		break;
+	case 'm':
+		resetShadowParams();
+		shadowParams.MSM = true;
+		break;
 	case 'n':
 		resetShadowParams();
 		shadowParams.naive = true;
 		break;
+	case 'd':
+		shadowParams.adaptiveDepthBias = !shadowParams.adaptiveDepthBias;
+		break;
+	case 'w':
+		printf("LightPosition: %f %f %f\n", sceneLoader->getLightPosition()[0] + lightTranslationVector[0], sceneLoader->getLightPosition()[1] + lightTranslationVector[1], 
+			sceneLoader->getLightPosition()[2] + lightTranslationVector[2]);
+		printf("LightPosition: %f %f %f\n", lightEye[0], lightEye[1], lightEye[2]);
+		printf("CameraPosition: %f %f %f\n", cameraEye[0], cameraEye[1], cameraEye[2]);
+		printf("Global Translation: %f %f %f\n", translationVector[0], translationVector[1], translationVector[2]);
+		printf("Global Rotation: %f %f %f\n", rotationAngles[0], rotationAngles[1], rotationAngles[2]);
+		break;
+	case 'c':
+		cameraOn = !cameraOn;
+		break;
 	}
-
 
 }
 
@@ -424,47 +475,101 @@ void specialKeyboard(int key, int x, int y)
 	switch(key) {
 	
 	case GLUT_KEY_UP:
-		if(translationOn)
-			translationVector[1] += vel;
-		if(rotationOn)
-			rotationAngles[1] += 5 * vel;
+		if(cameraOn) {
+			if(translationOn)
+				cameraEye[1] += vel;
+			if(rotationOn)
+				cameraEye = glm::mat3(glm::rotate((float)5 * vel, glm::vec3(0, 1, 0))) * cameraEye;
+		} else {
+			if(translationOn)
+				translationVector[1] += vel;
+			if(rotationOn)
+				rotationAngles[1] += 5 * vel;
+		}
+		if(lightTranslationOn)
+			lightTranslationVector[1] += 5 * vel;
+		
 		break;
 	case GLUT_KEY_DOWN:
-		if(translationOn)
-			translationVector[1] -= vel;
-		if(rotationOn)
-			rotationAngles[1] -= 5 * vel;
+		if(cameraOn) {
+			if(translationOn)
+				cameraEye[1] -= vel;
+			if(rotationOn)
+				cameraEye = glm::mat3(glm::rotate((float)-5 * vel, glm::vec3(0, 1, 0))) * cameraEye;
+		} else {
+			if(translationOn)
+				translationVector[1] -= vel;
+			if(rotationOn)
+				rotationAngles[1] -= 5 * vel;
+		}
+		if(lightTranslationOn)
+			lightTranslationVector[1] -= 5 * vel;
 		break;
 	case GLUT_KEY_LEFT:
-		if(translationOn)
-			translationVector[0] -= vel;
-		if(rotationOn)
-			rotationAngles[0] -= 5 * vel;
+		if(cameraOn) {
+			if(translationOn)
+				cameraEye[0] -= vel;
+			if(rotationOn)
+				cameraEye = glm::mat3(glm::rotate((float)-5 * vel, glm::vec3(1, 0, 0))) * cameraEye;
+		} else {
+			if(translationOn)
+				translationVector[0] -= vel;
+			if(rotationOn)
+				rotationAngles[0] -= 5 * vel;
+		}
+		if(lightTranslationOn)
+			lightTranslationVector[0] -= 5 * vel;
 		break;
 	case GLUT_KEY_RIGHT:
-		if(translationOn)
-			translationVector[0] += vel;
-		if(rotationOn)
-			rotationAngles[0] += 5 * vel;
+		if(cameraOn) {
+			if(translationOn)
+				cameraEye[0] += vel;
+			if(rotationOn)
+				cameraEye = glm::mat3(glm::rotate((float)5 * vel, glm::vec3(1, 0, 0))) * cameraEye;
+		} else {
+			if(translationOn)
+				translationVector[0] += vel;
+			if(rotationOn)
+				rotationAngles[0] += 5 * vel;
+		}
+		if(lightTranslationOn)
+			lightTranslationVector[0] += 5 * vel;
 		break;
 	case GLUT_KEY_PAGE_UP:
-		if(translationOn)
-			translationVector[2] += vel;
-		if(rotationOn)
-			rotationAngles[2] += 5 * vel;
+		if(cameraOn) {
+			if(translationOn)
+				cameraEye[2] += vel;
+			if(rotationOn)
+				cameraEye = glm::mat3(glm::rotate((float)5 * vel, glm::vec3(0, 0, 1))) * cameraEye;
+		} else {
+			if(translationOn)
+				translationVector[2] += vel;
+			if(rotationOn)
+				rotationAngles[2] += 5 * vel;
+		}
+		if(lightTranslationOn)
+			lightTranslationVector[2] += 5 * vel;
 		break;
 	case GLUT_KEY_PAGE_DOWN:
-		if(translationOn)
-			translationVector[2] -= vel;
-		if(rotationOn)
-			rotationAngles[2] -= 5 * vel;
+		if(cameraOn) {
+			if(translationOn)
+				cameraEye[2] -= vel;
+			if(rotationOn)
+				cameraEye = glm::mat3(glm::rotate((float)-5 * vel, glm::vec3(0, 0, 1))) * cameraEye;
+		} else {
+			if(translationOn)
+				translationVector[2] -= vel;
+			if(rotationOn)
+				rotationAngles[2] -= 5 * vel;
+		}
+		if(lightTranslationOn)
+			lightTranslationVector[2] -= 5 * vel;
 		break;
-
 	}
 
 }
 
-void initGL() {
+void initGL(char *configurationFile) {
 
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0);
 	glShadeModel(GL_SMOOTH);
@@ -479,44 +584,36 @@ void initGL() {
 	if(gaussianYFrameBuffer == 0)
 		glGenFramebuffers(1, &gaussianYFrameBuffer);
 	if(sceneVBO[0] == 0)
-		glGenBuffers(4, sceneVBO);
-
-	cube = new Mesh();
-	cube->loadOBJFile("OBJ/cube.obj");
-	cube->computeNormals();
-	cube->scale(5.0);
+		glGenBuffers(5, sceneVBO);
+	if(sceneTextures[0] == 0)
+		glGenTextures(4, sceneTextures);
 
 	scene = new Mesh();
-	scene->addObject(cube);
-	
-	plane = new Mesh();
-	plane->buildCube(40.0, 1.0, 40.0);
-	plane->translate(-8.0, false, true, false);
-	scene->addObject(plane);
-	
-	suzanne = new Mesh();
-	suzanne->loadOBJFile("OBJ/suzanne.obj");
-	suzanne->computeNormals();
-	suzanne->scale(5.0);
-	suzanne->translate(-15.0, true, false, false);	
-	scene->addObject(suzanne);
-	
-	cube->translate(15.0, true, false, false);
-	scene->addObject(cube);
-	
+	sceneLoader = new SceneLoader(configurationFile, scene);
+	sceneLoader->load();
+
 	lightView = new Image(PSRMapWidth, PSRMapHeight, 3);
 
-	cameraEye[0] = 0.0; cameraEye[1] = 25.0; cameraEye[2] = -40.0;
+	float centroid[3];
+	scene->computeCentroid(centroid);
+	cameraEye[0] = sceneLoader->getCameraPosition()[0]; cameraEye[1] = sceneLoader->getCameraPosition()[1]; cameraEye[2] = sceneLoader->getCameraPosition()[2];
+	//cameraAt[0] = centroid[0]; cameraAt[1] = centroid[1]; cameraAt[2] = centroid[2];
 	cameraAt[0] = 0.0; cameraAt[1] = 0.0; cameraAt[2] = 0.0;
+	lightAt[0] = 0.0; lightAt[1] = 0.0; lightAt[2] = 0.0;
 	cameraUp[0] = 0.0; cameraUp[1] = 0.0; cameraUp[2] = 1.0;
 
 	shadowParams.shadowMapWidth = shadowMapWidth;
 	shadowParams.shadowMapHeight = shadowMapHeight;
 	resetShadowParams();
 	shadowParams.naive = true;
+	shadowParams.adaptiveDepthBias = true;
 
 	myGLTextureViewer.loadQuad();
 
+	if(scene->textureFromImage())
+		for(int num = 0; num < scene->getNumberOfTextures(); num++)
+			myGLTextureViewer.loadRGBTexture(scene->getTexture()[num]->getData(), sceneTextures, num, scene->getTexture()[num]->getWidth(), scene->getTexture()[num]->getHeight());
+	
 	myGLTextureViewer.loadRGBTexture((float*)NULL, textures, SHADOW_MAP_COLOR, shadowMapWidth, shadowMapHeight);
 	myGLTextureViewer.loadRGBTexture((float*)NULL, textures, GAUSSIAN_X_MAP_COLOR, windowWidth, windowHeight);
 	myGLTextureViewer.loadRGBTexture((float*)NULL, textures, GAUSSIAN_Y_MAP_COLOR, windowWidth, windowHeight);
@@ -562,7 +659,7 @@ int main(int argc, char **argv) {
 	glutSpecialFunc(specialKeyboard);
 	
 	glewInit();
-	initGL();
+	initGL(argv[1]);
 
 	initShader("Shaders/Phong", PHONG_SHADER);
 	initShader("Shaders/Shadow", SHADOW_MAPPING_SHADER);
@@ -572,19 +669,16 @@ int main(int argc, char **argv) {
 	initShader("Shaders/ExponentialMoments", EXPONENTIAL_MOMENT_SHADER);
 	initShader("Shaders/Gaussian/GaussianBlur5X", GAUSSIAN_X_SHADER);
 	initShader("Shaders/Gaussian/GaussianBlur5Y", GAUSSIAN_Y_SHADER);
-	initShader("Shaders/ShadowOnly", SHADOW_ONLY_SHADER);
-	initShader("Shaders/EdgeAwareFiltering", SOBEL_SHADER);
+	initShader("Shaders/LogGaussian/LogGaussianBlur5X", LOG_GAUSSIAN_X_SHADER);
+	initShader("Shaders/LogGaussian/LogGaussianBlur5Y", LOG_GAUSSIAN_Y_SHADER);
 	glUseProgram(0);
 
 	glutMainLoop();
 
-	delete cube;
-	delete plane;
-	delete suzanne;
 	delete scene;
-	
+	delete sceneLoader;
 	delete lightView;
-	
+
 	return 0;
 
 }

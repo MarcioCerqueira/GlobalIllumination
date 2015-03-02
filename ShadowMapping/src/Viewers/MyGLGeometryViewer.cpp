@@ -5,7 +5,7 @@ MyGLGeometryViewer::MyGLGeometryViewer()
 
 	fov = 45.f;
 	zNear = 1.0f;
-	zFar = 5000.0f;
+	zFar = 1000.0f;
 
 }
 
@@ -96,6 +96,10 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	shadowParams.lightMVP = bias * shadowParams.lightMVP;
 	GLuint lightMVPID = glGetUniformLocation(shaderProg, "lightMVP");
 	glUniformMatrix4fv(lightMVPID, 1, GL_FALSE, &shadowParams.lightMVP[0][0]);
+	GLuint lightMVID = glGetUniformLocation(shaderProg, "lightMV");
+	glUniformMatrix4fv(lightMVID, 1, GL_FALSE, &shadowParams.lightMV[0][0]);
+	GLuint lightPID = glGetUniformLocation(shaderProg, "lightP");
+	glUniformMatrix4fv(lightPID, 1, GL_FALSE, &shadowParams.lightP[0][0]);
 	GLuint lightMVPInvID = glGetUniformLocation(shaderProg, "lightMVPInv");
 	glUniformMatrix4fv(lightMVPInvID, 1, GL_FALSE, &glm::inverse(shadowParams.lightMVP)[0][0]);
 	GLuint shadowMapWidthID = glGetUniformLocation(shaderProg, "shadowMapWidth");
@@ -110,14 +114,15 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glUniform1i(shadowMapPoissonID, shadowParams.poissonPCF);
 	GLuint shadowMapEdgeID = glGetUniformLocation(shaderProg, "edgePCF");
 	glUniform1i(shadowMapEdgeID, shadowParams.edgePCF);
-	GLuint shadowMapVSMID = glGetUniformLocation(shaderProg, "VSM");
-	glUniform1i(shadowMapVSMID, shadowParams.VSM);
 	GLuint shadowMapESMID = glGetUniformLocation(shaderProg, "ESM");
 	glUniform1i(shadowMapESMID, shadowParams.ESM);
 	GLuint shadowMapEVSMID = glGetUniformLocation(shaderProg, "EVSM");
 	glUniform1i(shadowMapEVSMID, shadowParams.EVSM);
+	configureMoments(shadowParams);
 	GLuint shadowMapNaiveID = glGetUniformLocation(shaderProg, "naive");
 	glUniform1i(shadowMapNaiveID, shadowParams.naive);
+	GLuint shadowMapDepthBiasID = glGetUniformLocation(shaderProg, "useAdaptiveDepthBias");
+	glUniform1i(shadowMapDepthBiasID, shadowParams.adaptiveDepthBias);
 	GLuint shadowMap = glGetUniformLocation(shaderProg, "shadowMap");
 	glUniform1i(shadowMap, 0);
 	if(shadowParams.edgePCF) {
@@ -141,6 +146,33 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		glDisable(GL_TEXTURE_2D);
 	}
 
+
+}
+
+void MyGLGeometryViewer::configureMoments(ShadowParams shadowParams)
+{
+
+	glm::mat4 mQuantization, mQuantizationInverse;
+	mQuantization[0][0] = -2.07224649;	mQuantization[0][1] = 32.2370378;	mQuantization[0][2] = -68.5710746;	mQuantization[0][3] = 39.3703274;
+	mQuantization[1][0] = 13.7948857;	mQuantization[1][1] = -59.4683976;	mQuantization[1][2] = 82.035975;	mQuantization[1][3] = -35.3649032;
+	mQuantization[2][0] = 0.105877704;	mQuantization[2][1] = -1.90774663;	mQuantization[2][2] = 9.34965551;	mQuantization[2][3] = -6.65434907;
+	mQuantization[3][0] = 9.79240621;	mQuantization[3][1] = -33.76521106;	mQuantization[3][2] = 47.9456097;	mQuantization[3][3] = -23.9728048;
+	mQuantization = glm::transpose(mQuantization);
+	mQuantizationInverse = glm::inverse(mQuantization);
+
+	GLuint shadowMapVSMID = glGetUniformLocation(shaderProg, "VSM");
+	glUniform1i(shadowMapVSMID, shadowParams.VSM);
+	GLuint shadowMapMSMID = glGetUniformLocation(shaderProg, "MSM");
+	glUniform1i(shadowMapMSMID, shadowParams.MSM);
+
+	if(shadowParams.MSM) {
+		GLuint tQuantizationID = glGetUniformLocation(shaderProg, "tQuantization");
+		glUniform4f(tQuantizationID, 0.0359558848, 0.0, 0.0, 0.0);
+		GLuint mQuantizationID = glGetUniformLocation(shaderProg, "mQuantization");
+		glUniformMatrix4fv(mQuantizationID, 1, GL_FALSE, &mQuantization[0][0]);
+		GLuint mQuantizationInverseID = glGetUniformLocation(shaderProg, "mQuantizationInverse");
+		glUniformMatrix4fv(mQuantizationInverseID, 1, GL_FALSE, &mQuantizationInverse[0][0]);
+	}
 
 }
 
@@ -193,9 +225,26 @@ void MyGLGeometryViewer::drawPlane(float x, float y, float z) {
 
 }
 
-void MyGLGeometryViewer::drawMesh(GLuint *VBOs, int numberOfIndices)
+void MyGLGeometryViewer::drawMesh(GLuint *VBOs, int numberOfIndices, int numberOfTexCoords, int numberOfColors, bool textureFromImage, GLuint texture)
 {
 	
+	GLuint textureFromImageID = glGetUniformLocation(shaderProg, "useTextureForColoring");
+	glUniform1i(textureFromImageID, (int)textureFromImage);
+
+	GLuint colorID = glGetUniformLocation(shaderProg, "useMeshColor");
+	glUniform1i(colorID, numberOfColors > 0 ? 1 : 0);
+
+	if(textureFromImage) {
+		
+		GLuint textureID = glGetUniformLocation(shaderProg, "meshTexturedColor");
+		glUniform1i(textureID, 2);
+	
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, texture);
+		glGenerateMipmap(GL_TEXTURE_2D);
+	
+	}
+
 	GLint attribute_vert = glGetAttribLocation(shaderProg, "vertex");
 	glEnableVertexAttribArray(attribute_vert);
 	glBindBuffer(GL_ARRAY_BUFFER, VBOs[0]);
@@ -205,25 +254,67 @@ void MyGLGeometryViewer::drawMesh(GLuint *VBOs, int numberOfIndices)
 	glEnableVertexAttribArray(attribute_norm);
 	glBindBuffer(GL_ARRAY_BUFFER, VBOs[1]);
 	glVertexAttribPointer(attribute_norm, 3, GL_FLOAT, GL_TRUE, 0, 0);
+	
+	GLint attribute_uv; 
+	if(numberOfTexCoords > 0) {
 
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, VBOs[2]);
+		attribute_uv = glGetAttribLocation(shaderProg, "uv");
+		glEnableVertexAttribArray(attribute_uv);
+		glBindBuffer(GL_ARRAY_BUFFER, VBOs[2]);
+		glVertexAttribPointer(attribute_uv, 2, GL_FLOAT, GL_FALSE, 0, 0);
+	
+	}
+
+	GLint attribute_color;
+	if(numberOfColors > 0) {
+
+		attribute_color = glGetAttribLocation(shaderProg, "color");
+		glEnableVertexAttribArray(attribute_color);
+		glBindBuffer(GL_ARRAY_BUFFER, VBOs[3]);
+		glVertexAttribPointer(attribute_color, 3, GL_FLOAT, GL_FALSE, 0, 0);
+	
+	}
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, VBOs[4]);
 	glDrawElements(GL_TRIANGLES, numberOfIndices, GL_UNSIGNED_INT, 0);
 
 	glDisableVertexAttribArray(attribute_vert);
 	glDisableVertexAttribArray(attribute_norm);
+	
+	if(numberOfTexCoords > 0)
+		glDisableVertexAttribArray(attribute_uv);
+	if(numberOfColors > 0)
+		glDisableVertexAttribArray(attribute_color);
+	
+	if(textureFromImage) {
+		
+		glActiveTexture(GL_TEXTURE2);
+		glDisable(GL_TEXTURE_2D);
+	
+	}
 
 }
 
-void MyGLGeometryViewer::loadVBOs(GLuint *VBOs, float *pointCloud, float *normalVector, int *indices, int numberOfPoints, int numberOfIndices)
+void MyGLGeometryViewer::loadVBOs(GLuint *VBOs, Mesh *scene)
 {
 
 	glBindBuffer(GL_ARRAY_BUFFER, VBOs[0]);
-	glBufferData(GL_ARRAY_BUFFER, numberOfPoints * sizeof(float), pointCloud, GL_DYNAMIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, scene->getPointCloudSize() * sizeof(float), scene->getPointCloud(), GL_DYNAMIC_DRAW);
 
 	glBindBuffer(GL_ARRAY_BUFFER, VBOs[1]);
-	glBufferData(GL_ARRAY_BUFFER, numberOfPoints * sizeof(float), normalVector, GL_DYNAMIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, scene->getPointCloudSize() * sizeof(float), scene->getNormalVector(), GL_DYNAMIC_DRAW);
 
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, VBOs[2]);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, numberOfIndices * sizeof(int), indices, GL_DYNAMIC_DRAW);
+	if(scene->getTextureCoordsSize() > 0) {
+		glBindBuffer(GL_ARRAY_BUFFER, VBOs[2]);
+		glBufferData(GL_ARRAY_BUFFER, scene->getTextureCoordsSize() * sizeof(float), scene->getTextureCoords(), GL_DYNAMIC_DRAW);
+	}
+
+	if(scene->getColorsSize() > 0) {
+		glBindBuffer(GL_ARRAY_BUFFER, VBOs[3]);
+		glBufferData(GL_ARRAY_BUFFER, scene->getColorsSize() * sizeof(float), scene->getColors(), GL_DYNAMIC_DRAW);
+	}
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, VBOs[4]);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, scene->getIndicesSize() * sizeof(int), scene->getIndices(), GL_DYNAMIC_DRAW);
 
 }

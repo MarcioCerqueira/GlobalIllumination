@@ -5,6 +5,7 @@
 #include <GL/glew.h>
 #include <GL/glut.h>
 #include "Viewers/ShadowParams.h"
+#include "Mesh.h"
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/gtx/transform2.hpp"
@@ -21,14 +22,15 @@ public:
 	void configureLinearization();
 	void configurePhong(glm::vec3 lightPosition, glm::vec3 cameraPosition);
 	void configureShadow(ShadowParams shadowParams);
+	void configureMoments(ShadowParams shadowParams);
 	void configurePSRMatrix(int xmin, int xmax, int ymin, int ymax, int scaleRange, int width, int height);
 	void drawPlane(float x, float y, float z);
-	void drawMesh(GLuint *VBOs, int numberOfIndices);
+	void drawMesh(GLuint *VBOs, int numberOfIndices, int numberOfTexCoords, int numberOfColors, bool textureFromImage, GLuint texture);
 	glm::mat4 getProjectionMatrix() { return projection; }
 	glm::mat4 getViewMatrix() { return view; }
 	glm::mat4 getModelMatrix() { return model; }
 	glm::mat4 getPSRMatrix() { return psr; }
-	void loadVBOs(GLuint *VBOs, float *pointCloud, float *normalVectors, int *indices, int numberOfPoints, int numberOfIndices);
+	void loadVBOs(GLuint *VBOs, Mesh *scene);
 	void setEye(glm::vec3 eye) { this->eye = eye; }
 	void setLook(glm::vec3 look) { this->look = look; }
 	void setShaderProg(GLuint shaderProg) { this->shaderProg = shaderProg; }

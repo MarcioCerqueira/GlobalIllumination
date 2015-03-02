@@ -18,9 +18,8 @@ void main()
 	depth = depth * 0.5 + 0.5;
 	depth = linearize(depth);
 	
-	float c = 640.0;
-	float exponential = exp(c * depth);
-	float negativeExponential = -exp(-c * depth);
+	float exponential = depth;
+	float negativeExponential = depth;
 
 	float dx = dFdx(exponential);
 	float dy = dFdy(exponential);

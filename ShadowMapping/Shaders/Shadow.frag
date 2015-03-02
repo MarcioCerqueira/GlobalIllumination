@@ -1,9 +1,18 @@
 uniform sampler2D shadowMap;
 uniform sampler2D edgeMap;
+uniform sampler2D meshTexturedColor;
+uniform mat4 lightMV;
+uniform mat4 lightP;
+uniform mat4 mQuantization;
+uniform mat4 mQuantizationInverse;
+uniform vec4 tQuantization;
 varying vec3 N;
 varying vec3 v;  
 varying vec4 shadowCoord;
-varying vec4 shadowCord;
+varying vec2 uvTexture;
+varying vec3 meshColor;
+varying vec3 lv;
+varying vec3 ln;
 uniform vec3 lightPosition;
 uniform vec3 cameraPosition;
 uniform mat4 lightMVPInv;
@@ -16,16 +25,20 @@ uniform int edgePCF;
 uniform int VSM;
 uniform int ESM;
 uniform int EVSM;
+uniform int MSM;
 uniform int naive;
 uniform int zNear;
 uniform int zFar;
+uniform int useTextureForColoring;
+uniform int useMeshColor;
+uniform int useAdaptiveDepthBias;
 
 vec4 phong()
 {
 
    vec4 light_ambient = vec4(0.1, 0.1, 0.1, 1);
    vec4 light_specular = vec4(0.1, 0.1, 0.1, 1);
-   vec4 light_diffuse = vec4(0.9, 0.9, 0.9, 1);
+   vec4 light_diffuse = vec4(0.5, 0.5, 0.5, 1);
    float shininess = 60;
 
    vec3 L = normalize(lightPosition.xyz - v);   
@@ -41,7 +54,15 @@ vec4 phong()
    // calculate Specular Term:
    vec4 Ispec = light_specular * pow(max(dot(R,E),0.0), 0.3 * shininess);
 
-   return gl_FrontLightModelProduct.sceneColor + Iamb + Idiff + Ispec;  
+   vec4 sceneColor;
+   if(useTextureForColoring == 1)
+      sceneColor = texture2D(meshTexturedColor, uvTexture);	
+   else if(useMeshColor == 1)
+      sceneColor = vec4(meshColor.r, meshColor.g, meshColor.b, 1);
+   else
+	  sceneColor = gl_FrontLightModelProduct.sceneColor;
+   
+   return sceneColor + Iamb + Idiff + Ispec;  
 
 }
 
@@ -140,7 +161,6 @@ float chebyshevUpperBound(vec2 moments, float distanceFromLight)
 		return 1.0;
 	
 	float variance = moments.y - (moments.x * moments.x);
-	
 	float d = distanceFromLight - moments.x;
 	float p_max = variance / (variance + d*d);
 	p_max = (p_max - 0.2) / (1.0 - 0.2);
@@ -160,13 +180,14 @@ float varianceShadowMapping(vec3 normalizedShadowCoord)
 float exponentialShadowMapping(vec3 normalizedShadowCoord)
 {
 
+	float c = 300.0;
 	float e2 = texture2D(shadowMap, vec2(normalizedShadowCoord.st)).x;
+	e2 = exp(c * e2);
+
 	normalizedShadowCoord.z = linearize(normalizedShadowCoord.z);
-	
-	float c = 1280.0;
 	float e1 = exp(-c * normalizedShadowCoord.z);
 	
-	return (e1 * e2);
+	return clamp(e1 * e2, 0.0, 1.0);
 
 }
 
@@ -174,14 +195,15 @@ float exponentialShadowMapping(vec3 normalizedShadowCoord)
 float exponentialVarianceShadowMapping(vec3 normalizedShadowCoord)
 {
 
-	float positiveMoment1 = texture2D(shadowMap, vec2(normalizedShadowCoord.st)).x;
-	float positiveMoment2 = texture2D(shadowMap, vec2(normalizedShadowCoord.st)).y;
-	float negativeMoment1 = texture2D(shadowMap, vec2(normalizedShadowCoord.st)).z;
-	float negativeMoment2 = texture2D(shadowMap, vec2(normalizedShadowCoord.st)).w;
+	float c = 150.0;
+	
+	float positiveMoment1 = exp(c * texture2D(shadowMap, vec2(normalizedShadowCoord.st)).x);
+	float positiveMoment2 = exp(c * texture2D(shadowMap, vec2(normalizedShadowCoord.st)).y);
+	float negativeMoment1 = -exp(-c * texture2D(shadowMap, vec2(normalizedShadowCoord.st)).z);
+	float negativeMoment2 = -exp(-c * texture2D(shadowMap, vec2(normalizedShadowCoord.st)).w);
 
 	float positiveDistanceFromLight = linearize(normalizedShadowCoord.z);
 	
-	float c = 640.0;
 	float positiveDistanceFromLightMoment1 = exp(c * positiveDistanceFromLight);
 	float negativeDistanceFromLightMoment1 = -exp(-c * positiveDistanceFromLight);
 
@@ -189,13 +211,113 @@ float exponentialVarianceShadowMapping(vec3 normalizedShadowCoord)
 	float neg = chebyshevUpperBound(vec2(negativeMoment1, negativeMoment2), negativeDistanceFromLightMoment1);
 
 	return min(pos, neg);
+
 }
+
+float hamburger4MSM(vec3 normalizedShadowCoord)
+{
+
+	vec3 z, c, d;
+	vec4 b = texture2D(shadowMap, vec2(normalizedShadowCoord.st));
+	b = mQuantizationInverse * (b - tQuantization);
+	
+	//Hack
+	b.y = b.x * b.x;
+	b.z = b.x * b.x * b.x;
+	b.w = b.x * b.x * b.x * b.x;
+
+	float bias = 0.00003;
+	
+	z.x = linearize(normalizedShadowCoord.z);
+	b = (1 - bias) * b + bias * vec4(0.5, 0.5, 0.5, 0.5);
+	d = vec3(1.0, z.x, z.x * z.x);
+
+	//Use Cholesky decomposition (LDLT) to solve c
+	float L10 = b.x;
+	float L20 = b.y;
+	float D11 = b.y - L10 * L10;
+	float L21 = (b.z - L20 * L10)/D11;
+	float D22 = b.w - L20 * L20 - L21 * L21 * D11;
+	
+	float y0 = d.x;
+	float y1 = d.y - L10 * y0;
+	float y2 = d.z - L20 * y0 - L21 * y1;
+
+	y1 /= D11;
+	y2 /= D22;
+	
+	c.z = y2;
+	c.y = y1 - L21 * c.z;
+	c.x = y0 - L10 * c.y - L20 * c.z;	
+
+	// Solve the quadratic equation c[0]+c[1]*z+c[2]*z^2 to obtain solutions z[1] and z[2]
+	float p = c.y/c.z;
+	float q = c.x/c.z;
+	float D = ((p*p)/4.0f)-q;
+	float r = sqrt(D);
+	z.y = -(p/2.0f)-r;
+	z.z = -(p/2.0f)+r;
+	
+	if(z.x <= z.y)
+		return 1.0;
+	else if(z.x <= z.z)
+		return (1.0 - clamp((z.x * z.z - b.x * (z.x + z.z) + b.y)/((z.z - z.y) * (z.x - z.y)), 0.0, 1.0));
+	else 
+		return (1.0 - clamp(1.0 - (z.y * z.z - b.x * (z.y + z.z) + b.y)/((z.x - z.y) * (z.x - z.z)), 0.0, 1.0));
+	
+}
+
+/*
+float adaptiveDepthBias(vec3 normalizedShadowCoord)
+{
+
+	vec2 smBufferRes;
+	smBufferRes.x = 640;
+	smBufferRes.y = 480;
+
+	vec2 delta;
+	delta.x = 1.0 / smBufferRes.x;
+	delta.y = 1.0 / smBufferRes.y;
+
+	float viewBound = zNear * tan( 45*float( 3.141592653589793238462643 )/360.0f );
+	// Locate corresponding light space shadow map grid center
+    vec2 index = floor( vec2(normalizedShadowCoord.x * smBufferRes.x, normalizedShadowCoord.y * smBufferRes.y) );
+    vec2 nlsGridCenter = delta*(index + vec2(0.5)); // Normalized eye space grid center --- [0,1]
+    vec2 lsGridCenter = viewBound*( 2.0*nlsGridCenter - vec2(1.0) );
+    
+	// Light ray direction in light space
+    vec3 lsGridLineDir = normalize( vec3(lsGridCenter, -zNear) ); // Light space grid line direction    
+    
+	// Locate the potential occluder for the shading fragment
+    float ls_t_hit = dot(ln, lv.xyz) / dot(ln, lsGridLineDir);
+    vec3  ls_hit_p = ls_t_hit * lsGridLineDir;
+   
+    // Normalized depth value in shadow map
+	float SMDepth = texture2D(shadowMap, vec2(normalizedShadowCoord.st)).z;
+	float A = lightP[2][2];
+    float B = lightP[3][2];    
+    float adaptiveDepthBias = 0.5*pow(1.0 - A - 2.0*SMDepth, 2)*0.0001 / B; 
+	
+	// Use the intersection point as new look up point
+    vec4 lsPotentialoccluder = lightP * vec4(ls_hit_p, 1.0);
+    lsPotentialoccluder      = lsPotentialoccluder/lsPotentialoccluder.w;
+    lsPotentialoccluder      = 0.5 * lsPotentialoccluder + vec4(0.5, 0.5, 0.5, 0.0);
+   
+    float actualDepth = min(lsPotentialoccluder.z, normalizedShadowCoord.z);
+    float actualBias  = adaptiveDepthBias;
+    return actualDepth + actualBias;
+
+}
+*/
 
 void main()
 {	
 
 	vec4 color = phong();
 	vec4 normalizedShadowCoord = shadowCoord / shadowCoord.w;
+	//if(useAdaptiveDepthBias == 1) 
+		//normalizedShadowCoord.z = adaptiveDepthBias(normalizedShadowCoord);
+
 	float shadow = 1.0;
 
 	if(shadowCoord.w > 0.0) {
@@ -209,12 +331,13 @@ void main()
 			shadow = exponentialShadowMapping(normalizedShadowCoord.xyz);
 		else if(EVSM == 1)
 			shadow = exponentialVarianceShadowMapping(normalizedShadowCoord.xyz);
+		else if(MSM == 1)
+			shadow = hamburger4MSM(normalizedShadowCoord.xyz);
 		else
 			shadow = PCF(normalizedShadowCoord.xyz);
-			
 		
 	}
 
-	gl_FragColor = vec4(shadow, shadow, shadow, 1.0);
+	gl_FragColor = shadow * color;
 
 }

@@ -5,7 +5,7 @@ uniform int height;
 
 vec4 blur(vec2 step, vec2 center)
 {
-	
+
 	vec4 sum = vec4(0.0);
 	sum += texture2D(image, vec2(center.s - 2 * step.s, center.t)) * 0.0625;
 	sum += texture2D(image, vec2(center.s - 1 * step.s, center.t)) * 0.25;
@@ -13,7 +13,7 @@ vec4 blur(vec2 step, vec2 center)
 	sum += texture2D(image, vec2(center.s + 1 * step.s, center.t)) * 0.25;
 	sum += texture2D(image, vec2(center.s + 2 * step.s, center.t)) * 0.0625;
 	return sum;
-
+	
 }
 
 void main()

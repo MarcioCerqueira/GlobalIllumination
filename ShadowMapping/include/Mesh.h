@@ -6,8 +6,12 @@
 #include <string>
 #include <sstream>
 #include <vector>
+#include <iostream>
 #include "glm/glm.hpp"
-#include "Viewers/OBJLoader.h"
+#include "glm/gtc/matrix_transform.hpp"
+#include "glm/gtx/transform2.hpp"
+#include "IO/OBJLoader.h"
+#include "Image.h"
 
 class Mesh
 {
@@ -16,25 +20,46 @@ public:
 	~Mesh();
 	
 	void addObject(Mesh *mesh);
-	void buildCube(float x, float y, float z);
-	void buildPlane(float x, float y, float z);
 	void computeNormals();
+	void computeCentroid(float *centroid);
 	void loadOBJFile(char *filename);
-	void translate(float value, bool x, bool y, bool z);
-	void scale(float value);
+	void loadTexture(char *filename);
+	void translate(float x, float y, float z);
+	void scale(float x, float y, float z);
+	void rotate(float x, float y, float z);
+	void setBaseColor(float r, float g, float b);
 	
+
 	float* getPointCloud() { return pointCloud; }
 	float* getNormalVector() { return normalVector; }
+	float* getTextureCoords() { return textureCoords; }
+	float* getColors() { return colors; }
 	int* getIndices() { return indices; }
+	Image** getTexture() { return textures; }
+
 	int getPointCloudSize() { return pointCloudSize; }
 	int getIndicesSize() { return indicesSize; }
+	int getTextureCoordsSize() { return textureCoordsSize; }
+	int getColorsSize() { return colorsSize; }
+	int getNumberOfTextures() { return numberOfTextures; }
+	bool textureFromImage() { return isTextureFromImage; }
 
 private:
 	float *pointCloud;
 	float *normalVector;
+	float *textureCoords;
+	float *colors;
 	int *indices;
+	
+	Image **textures;
+
 	int pointCloudSize;
 	int indicesSize;
+	int textureCoordsSize;
+	int colorsSize;
+	int numberOfTextures;
+	bool isTextureFromImage;
+	
 };
 
 #endif

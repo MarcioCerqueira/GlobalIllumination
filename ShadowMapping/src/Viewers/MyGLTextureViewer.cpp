@@ -10,7 +10,7 @@ void MyGLTextureViewer::loadDepthComponentTexture(float *data, GLuint *texVBO, i
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, imageWidth, imageHeight, 0, GL_DEPTH_COMPONENT, GL_FLOAT, data);
-
+	
 }
 	
 void MyGLTextureViewer::loadRGBTexture(const unsigned char *data, GLuint *texVBO, int index, int imageWidth, int imageHeight)
@@ -19,8 +19,8 @@ void MyGLTextureViewer::loadRGBTexture(const unsigned char *data, GLuint *texVBO
 	glBindTexture(GL_TEXTURE_2D, texVBO[index]);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, imageWidth, imageHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
 
@@ -33,6 +33,8 @@ void MyGLTextureViewer::loadRGBTexture(float *data, GLuint *texVBO, int index, i
 	glBindTexture(GL_TEXTURE_2D, texVBO[index]);
 	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
@@ -80,9 +82,9 @@ void MyGLTextureViewer::drawTextureOnShader(GLuint texture, int imageWidth, int 
 	glUniform1i(height, imageHeight);
 
 	GLuint shadowMap = glGetUniformLocation(shaderProg, "image");
-	glUniform1i(shadowMap, 0);
+	glUniform1i(shadowMap, 7);
 	
-	glActiveTexture(GL_TEXTURE0);
+	glActiveTexture(GL_TEXTURE7);
 	glBindTexture(GL_TEXTURE_2D, texture);
 	glGenerateMipmap(GL_TEXTURE_2D);
 	
@@ -96,7 +98,7 @@ void MyGLTextureViewer::drawTextureOnShader(GLuint texture, int imageWidth, int 
 
 	glDisableVertexAttribArray(attribute_texcoord);
     
-	glActiveTexture(GL_TEXTURE0);
+	glActiveTexture(GL_TEXTURE7);
 	glDisable(GL_TEXTURE_2D);
 
 	glUseProgram(0);
