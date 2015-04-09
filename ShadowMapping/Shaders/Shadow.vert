@@ -26,7 +26,6 @@ void main(void)
    N = normalize(normalMatrix * normal);
    shadowCoord = lightMVP * vec4(vertex, 1);
 
-   
    gl_Position = MVP  * vec4(vertex, 1);
    gl_FrontColor = gl_Color;
    uvTexture = uv;

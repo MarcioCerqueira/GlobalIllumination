@@ -212,7 +212,62 @@ void MyGLGeometryViewer::configurePSRMatrix(int xmin, int xmax, int ymin, int ym
 	psr[3][0] = ox;		psr[3][1] = oy;		psr[3][2] = 0;		psr[3][3] = 1.0;
 
 }
+
+void MyGLGeometryViewer::configureRevectorization(GLuint discontinuityMap, GLuint shadowMap, ShadowParams shadowParams, int imageWidth, int imageHeight, 
+	bool computeDiscontinuity)
+{
+
+	glm::mat4 bias;
+	bias[0][0] = 0.5;	bias[0][1] = 0;		bias[0][2] = 0;		bias[0][3] = 0.0;
+	bias[1][0] = 0;		bias[1][1] = 0.5;	bias[1][2] = 0;		bias[1][3] = 0.0;
+	bias[2][0] = 0;		bias[2][1] = 0;		bias[2][2] = 0.5;	bias[2][3] = 0.0;
+	bias[3][0] = 0.5;	bias[3][1] = 0.5;	bias[3][2] = 0.5;	bias[3][3] = 1.0;
 	
+	shadowParams.lightMVP = bias * shadowParams.lightMVP;
+	glm::mat4 inverseMVP = glm::inverse(shadowParams.lightMVP);
+	
+	GLuint width = glGetUniformLocation(shaderProg, "width");
+	glUniform1i(width, imageWidth);
+	GLuint height = glGetUniformLocation(shaderProg, "height");
+	glUniform1i(height, imageHeight);
+	GLuint shadowMapWidth = glGetUniformLocation(shaderProg, "shadowMapWidth");
+	glUniform1i(shadowMapWidth, shadowParams.shadowMapWidth);
+	GLuint shadowMapHeight = glGetUniformLocation(shaderProg, "shadowMapHeight");
+	glUniform1i(shadowMapHeight, shadowParams.shadowMapHeight);
+	GLuint maxSearch = glGetUniformLocation(shaderProg, "maxSearch");
+	glUniform1i(maxSearch, shadowParams.maxSearch);
+	GLuint lightMVPID = glGetUniformLocation(shaderProg, "lightMVP");
+	glUniformMatrix4fv(lightMVPID, 1, GL_FALSE, &shadowParams.lightMVP[0][0]);
+	GLuint inverseLightMVPID = glGetUniformLocation(shaderProg, "inverseLightMVP");
+	glUniformMatrix4fv(inverseLightMVPID, 1, GL_FALSE, &inverseMVP[0][0]);
+
+	if(!computeDiscontinuity) {
+		GLuint discontinuityID = glGetUniformLocation(shaderProg, "discontinuityMap");
+		glUniform1i(discontinuityID, 7);
+	}
+
+	GLuint shadowID = glGetUniformLocation(shaderProg, "shadowMap");
+	glUniform1i(shadowID, 8);
+	
+	if(!computeDiscontinuity) {
+		glActiveTexture(GL_TEXTURE7);
+		glBindTexture(GL_TEXTURE_2D, discontinuityMap);
+		glGenerateMipmap(GL_TEXTURE_2D);
+	}
+
+	glActiveTexture(GL_TEXTURE8);
+	glBindTexture(GL_TEXTURE_2D, shadowMap);
+	glGenerateMipmap(GL_TEXTURE_2D);
+
+	if(!computeDiscontinuity) {
+		glActiveTexture(GL_TEXTURE7);
+		glDisable(GL_TEXTURE_2D);
+	}
+
+	glActiveTexture(GL_TEXTURE8);
+	glDisable(GL_TEXTURE_2D);
+
+}
 
 void MyGLGeometryViewer::drawPlane(float x, float y, float z) {
 	

@@ -19,16 +19,16 @@ vec4 blur(vec2 step, vec2 center)
 	kernel[4] = 0.0625;
 
 	float sample[5];
-	sample[0] = texture2D(image, vec2(center.s - 2 * step.s, center.t)).x;
-	sample[1] = texture2D(image, vec2(center.s - 1 * step.s, center.t)).x;
+	sample[0] = texture2D(image, vec2(center.s - 2.0 * step.s, center.t)).x;
+	sample[1] = texture2D(image, vec2(center.s - 1.0 * step.s, center.t)).x;
 	sample[2] = texture2D(image, vec2(center.s, center.t)).x;
-	sample[3] = texture2D(image, vec2(center.s + 1 * step.s, center.t)).x;
-	sample[4] = texture2D(image, vec2(center.s + 2 * step.s, center.t)).x;
+	sample[3] = texture2D(image, vec2(center.s + 1.0 * step.s, center.t)).x;
+	sample[4] = texture2D(image, vec2(center.s + 2.0 * step.s, center.t)).x;
 	
 	vec4 sum;
-	sum = log_conv(kernel[0], sample[0], kernel[1], sample[1]);
+	sum = vec4(log_conv(kernel[0], vec4(sample[0]), kernel[1], vec4(sample[1])));
 	for(int i = 2; i < 5; i++)
-		sum = log_conv(1.0, sum, kernel[i], sample[i]);
+		sum = vec4(log_conv(1.0, sum, kernel[i], vec4(sample[i])));
 
 	return sum;
 	

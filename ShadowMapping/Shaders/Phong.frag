@@ -1,5 +1,6 @@
 varying vec3 N;
 varying vec3 v;  
+varying vec4 position;
 uniform vec3 lightPosition;
 uniform vec3 cameraPosition;
 
@@ -9,7 +10,7 @@ vec4 phong()
    vec4 light_ambient = vec4(0.1, 0.1, 0.1, 1);
    vec4 light_specular = vec4(0.1, 0.1, 0.1, 1);
    vec4 light_diffuse = vec4(0.9, 0.9, 0.9, 1);
-   float shininess = 60;
+   float shininess = 60.0;
 
    vec3 L = normalize(lightPosition.xyz - v);   
    vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0)  
@@ -33,5 +34,5 @@ void main (void)
 
    vec4 color = phong();
    gl_FragColor = color;
-  
+   
 }

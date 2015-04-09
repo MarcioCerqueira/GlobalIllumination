@@ -32,6 +32,8 @@ uniform int zFar;
 uniform int useTextureForColoring;
 uniform int useMeshColor;
 uniform int useAdaptiveDepthBias;
+uniform mat4 MVP;
+uniform mat4 lightMVP;
 
 vec4 phong()
 {
@@ -39,7 +41,7 @@ vec4 phong()
    vec4 light_ambient = vec4(0.1, 0.1, 0.1, 1);
    vec4 light_specular = vec4(0.1, 0.1, 0.1, 1);
    vec4 light_diffuse = vec4(0.5, 0.5, 0.5, 1);
-   float shininess = 60;
+   float shininess = 60.0;
 
    vec3 L = normalize(lightPosition.xyz - v);   
    vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0)  
@@ -68,7 +70,9 @@ vec4 phong()
 
 float linearize(float depth) {
 
-	depth = (2.0 * zNear) / (zFar + zNear - depth * (zFar - zNear));
+	float n = float(zNear);
+	float f = float(zFar);
+	depth = (2.0 * n) / (f + n - depth * (f - n));
 	return depth;
 
 }
@@ -88,7 +92,7 @@ vec4 cubic(float v){
 
 vec4 textureBicubic(sampler2D sampler, vec2 texCoords){
 
-   vec2 texSize = textureSize(sampler, 0);
+   vec2 texSize = vec2(textureSize(sampler, 0));
    vec2 invTexSize = 1.0 / texSize;
    
    texCoords = texCoords * texSize - 0.5;
@@ -123,10 +127,10 @@ float PCF(vec3 normalizedShadowCoord)
 
 	float incrWidth = 1.0/float(shadowMapWidth);
 	float incrHeight = 1.0/float(shadowMapHeight);
-	float illuminationCount = 0;
-	float eachAxis = 5;
-	float numberOfSamples = eachAxis * eachAxis;
-	float offset = (eachAxis - 1) * 0.5;
+	int illuminationCount = 0;
+	int eachAxis = 5;
+	int numberOfSamples = eachAxis * eachAxis;
+	float offset = (float(eachAxis) - 1.0) * 0.5;
 	float distanceFromLight;
 
 	int count = 0;
@@ -140,7 +144,7 @@ float PCF(vec3 normalizedShadowCoord)
 			if(bilinearPCF == 1)
 				distanceFromLight = texture2D(shadowMap, vec2(normalizedShadowCoord.s + w * incrWidth, normalizedShadowCoord.t + h * incrHeight)).z;
 			if(normalizedShadowCoord.z <= distanceFromLight)
-				illuminationCount += 1;
+				illuminationCount++;
 			count++;
 
 		}
@@ -151,7 +155,7 @@ float PCF(vec3 normalizedShadowCoord)
 	if(illuminationCount == numberOfSamples)
 		return 1.0;
 
-	return illuminationCount/numberOfSamples;
+	return float(illuminationCount)/float(numberOfSamples);
 }
 
 float chebyshevUpperBound(vec2 moments, float distanceFromLight)
@@ -229,7 +233,7 @@ float hamburger4MSM(vec3 normalizedShadowCoord)
 	float bias = 0.00003;
 	
 	z.x = linearize(normalizedShadowCoord.z);
-	b = (1 - bias) * b + bias * vec4(0.5, 0.5, 0.5, 0.5);
+	b = (1.0 - bias) * b + bias * vec4(0.5, 0.5, 0.5, 0.5);
 	d = vec3(1.0, z.x, z.x * z.x);
 
 	//Use Cholesky decomposition (LDLT) to solve c
@@ -253,10 +257,10 @@ float hamburger4MSM(vec3 normalizedShadowCoord)
 	// Solve the quadratic equation c[0]+c[1]*z+c[2]*z^2 to obtain solutions z[1] and z[2]
 	float p = c.y/c.z;
 	float q = c.x/c.z;
-	float D = ((p*p)/4.0f)-q;
+	float D = ((p*p)/4.0)-q;
 	float r = sqrt(D);
-	z.y = -(p/2.0f)-r;
-	z.z = -(p/2.0f)+r;
+	z.y = -(p/2.0)-r;
+	z.z = -(p/2.0)+r;
 	
 	if(z.x <= z.y)
 		return 1.0;
@@ -315,6 +319,7 @@ void main()
 
 	vec4 color = phong();
 	vec4 normalizedShadowCoord = shadowCoord / shadowCoord.w;
+	
 	//if(useAdaptiveDepthBias == 1) 
 		//normalizedShadowCoord.z = adaptiveDepthBias(normalizedShadowCoord);
 

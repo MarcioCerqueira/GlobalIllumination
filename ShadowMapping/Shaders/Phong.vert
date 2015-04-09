@@ -13,7 +13,7 @@ void main(void)
 
    v = vec3(MV * vec4(vertex, 1));       
    N = normalize(normalMatrix * normal);
-
+   
    gl_Position = MVP  * vec4(vertex, 1);
    gl_FrontColor = gl_Color;
 
