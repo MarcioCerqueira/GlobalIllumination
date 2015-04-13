@@ -17,6 +17,10 @@ uniform int shadowMapHeight;
 uniform int maxSearch;
 uniform int useTextureForColoring;
 uniform int useMeshColor;
+uniform int showDiscontinuity;
+uniform int showONDS;
+uniform int showClippedONDS;
+uniform int showSubCoord;
 
 vec4 phong()
 {
@@ -106,30 +110,31 @@ bool getDisc(vec4 normalizedLightCoord, vec2 dir)
 	
 }
 
-float computeDiscontinuityLength(vec2 inputDiscontinuity, vec4 lightCoord, vec2 dir, int maxSearch)
+float computeDiscontinuityLength(vec2 inputDiscontinuity, vec4 lightCoord, vec2 dir, int maxSearch, vec2 subCoord)
 {
 
-	vec2 imageSize = vec2(width, height);
-	vec2 inverseImageSize = 1.0/imageSize;
+	vec2 shadowMapSize = vec2(shadowMapWidth, shadowMapHeight);
+	vec2 inverseShadowMapSize = 1.0/shadowMapSize;
 	vec4 centeredLightCoord = lightCoord;
 	
 	float foundEdgeEnd = 0.0;
 	bool hasDisc = false;
 	
-	if(dir.x == 0.0 && inputDiscontinuity.r == 0.0) return -1.0;
-	if(dir.y == 0.0 && inputDiscontinuity.g == 0.0) return -1.0;
+	if(dir.x == 0.0 && inputDiscontinuity.r == 0.0 && inputDiscontinuity.g != 0.0) return -1.0;
+	if(dir.y == 0.0 && inputDiscontinuity.r != 0.0 && inputDiscontinuity.g == 0.0) return -1.0;
 	
 	float dist = 1.0;
 
-	vec2 shadowMapStep = dir * inverseImageSize;
+	vec2 shadowMapStep = dir * inverseShadowMapSize;
 	vec2 currentDiscontinuity;
+	centeredLightCoord.z -= 0.000025;
 		
 	for(int it = 0; it < maxSearch; it++) {
 		
 		float distanceFromLight = texture2D(shadowMap, centeredLightCoord.st).z;
 		float center = (centeredLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
 		bool isCenterUmbra = !bool(center);
-
+		
 		if(isCenterUmbra) {
 			foundEdgeEnd = 1.0;
 			break;
@@ -140,8 +145,15 @@ float computeDiscontinuityLength(vec2 inputDiscontinuity, vec4 lightCoord, vec2 
 
 		dist++;
 		centeredLightCoord.xy += shadowMapStep;
+	
 	}
 	
+	if(dir.x == -1.0) dist -= (1.0 - subCoord.x);
+	else dist -= subCoord.x;
+
+	if(dir.y == -1.0) dist -= (1.0 - subCoord.y);
+	else dist -= subCoord.y;
+
 	return -dist + foundEdgeEnd * (dist + dist);
 
 }
@@ -150,7 +162,7 @@ float normalizeDiscontinuitySpace(vec2 dir, int maxSearch) {
 	
 	float edgeLength = min(abs(dir.x) + abs(dir.y) - 1.0, float(maxSearch));
 	return 1.0 - max(dir.x, dir.y)/edgeLength;
-	
+
 }
 
 float orientateDiscontinuitySpace(vec2 dir) 
@@ -167,18 +179,18 @@ float orientateDiscontinuitySpace(vec2 dir)
 
 }
 
-vec4 computeONDS(vec4 lightCoord, vec4 cameraCoord, vec2 discontinuity)
+vec4 computeONDS(vec4 lightCoord, vec4 cameraCoord, vec2 discontinuity, vec2 subCoord)
 {
 
-	float left = computeDiscontinuityLength(discontinuity, lightCoord, vec2(-1, 0), maxSearch);
-	float right = computeDiscontinuityLength(discontinuity, lightCoord, vec2(1, 0), maxSearch);
-	float down = computeDiscontinuityLength(discontinuity, lightCoord, vec2(0, -1), maxSearch);
-	float up = computeDiscontinuityLength(discontinuity, lightCoord, vec2(0, 1), maxSearch);
+	float left = computeDiscontinuityLength(discontinuity, lightCoord, vec2(-1, 0), maxSearch, subCoord);
+	float right = computeDiscontinuityLength(discontinuity, lightCoord, vec2(1, 0), maxSearch, subCoord);
+	float down = computeDiscontinuityLength(discontinuity, lightCoord, vec2(0, -1), maxSearch, subCoord);
+	float up = computeDiscontinuityLength(discontinuity, lightCoord, vec2(0, 1), maxSearch, subCoord);
 
 	vec2 normalizedDiscontinuityCoord;
 	normalizedDiscontinuityCoord.x = normalizeDiscontinuitySpace(vec2(left, right), maxSearch);
 	normalizedDiscontinuityCoord.y = normalizeDiscontinuitySpace(vec2(down, up), maxSearch);
-	
+
 	vec2 dominantDir;
 	dominantDir.x = orientateDiscontinuitySpace(vec2(left, right));
 	dominantDir.y = orientateDiscontinuitySpace(vec2(down, up));
@@ -187,43 +199,8 @@ vec4 computeONDS(vec4 lightCoord, vec4 cameraCoord, vec2 discontinuity)
 
 }
 
-float computeSubCoord(vec2 cameraCoord, int maxSearch, vec2 dir)
+float clipONDS(vec4 lightCoord, vec4 cameraCoord, vec4 normalizedDiscontinuity, vec2 discontinuity, vec2 subCoord)
 {
-
-	vec2 imageSize = vec2(width, height);
-	vec2 subCoord = vec2(0, 0);
-	vec2 pos = cameraCoord.xy;
-	
-	for(int i = 0; i < maxSearch; i++)
-	{
-		if((texture2D(discontinuityMap, pos).rg * dir) != 0.0)
-			subCoord.y++;
-		else
-			break;
-		pos += 1.0/imageSize * dir;
-	}
-
-	pos = cameraCoord.xy;
-		
-	for(int i = 0; i < maxSearch; i++)
-	{
-		if((texture2D(discontinuityMap, pos).rg * dir) != 0.0)
-			subCoord.x++;
-		else
-			break;
-		pos -= 1.0/imageSize * dir;
-	}
-
-	pos = cameraCoord.xy;
-
-	return min(subCoord.x/(subCoord.x + subCoord.y - 1.0), float(maxSearch));
-
-}
-
-float clipONDS(vec4 lightCoord, vec4 cameraCoord, vec4 normalizedDiscontinuity, vec2 discontinuity)
-{
-
-	vec2 subCoord;
 
 	//pre-evaluation
 
@@ -241,13 +218,64 @@ float clipONDS(vec4 lightCoord, vec4 cameraCoord, vec4 normalizedDiscontinuity, 
 		
 	}
 
-	if(discontinuity.g > 0.0 && discontinuity.r > 0.0) return 0.0;
+	if(discontinuity.r > 0.0 && discontinuity.g > 0.0) {
+	
+		vec2 shadowMapSize = vec2(shadowMapWidth, shadowMapHeight);
+		vec2 shadowMapStep = 1.0/shadowMapSize;
+		
+		lightCoord.x -= ((discontinuity.r - 0.75) * 4.0) * shadowMapStep.x;
+		bool horizontal = getDisc(lightCoord, vec2(1.0, 0.0));
+		
+		lightCoord.x += ((discontinuity.r - 0.75) * 4.0) * shadowMapStep.x;
+		lightCoord.y += ((discontinuity.g - 0.75) * 4.0) * shadowMapStep.y;
+		bool vertical = getDisc(lightCoord, vec2(0.0, 1.0));
 
+		if(horizontal && !vertical) {
+		
+			discontinuity.r = 0.0;
+		
+		} else if(!horizontal && vertical) {
+
+			discontinuity.g = 0.0;
+		
+		} else {
+			
+			if(discontinuity.r == 0.5 && discontinuity.g == 0.5) {
+			
+				if(subCoord.x <= subCoord.y)
+					return 0.0;
+				else
+					return 1.0;
+
+			} else if(discontinuity.r == 0.5 && discontinuity.g == 1.0) {
+			
+				if(subCoord.x <= (1.0 - subCoord.y))
+					return 0.0;
+				else
+					return 1.0;
+
+			} else if(discontinuity.r == 1.0 && discontinuity.g == 0.5) {
+			
+				if((1.0 - subCoord.x) <= subCoord.y)
+					return 0.0;
+				else
+					return 1.0;
+
+			} else if(discontinuity.r == 1.0 && discontinuity.g == 1.0) {
+				
+				if((1.0 - subCoord.x) <= (1.0 - subCoord.y))
+					return 0.0;
+				else
+					return 1.0;
+
+			}
+
+		}
+
+	}
+	
 	if(discontinuity.g > 0.0) {
 		
-		
-		subCoord.y = computeSubCoord(cameraCoord.xy, maxSearch, vec2(0, 1));
-
 		if(discontinuity.g == 0.5) {
 
 			if((1.0 - subCoord.y) <= normalizedDiscontinuity.x)
@@ -269,8 +297,6 @@ float clipONDS(vec4 lightCoord, vec4 cameraCoord, vec4 normalizedDiscontinuity, 
 	
 	if(discontinuity.r > 0.0) {
 		
-		subCoord.x = computeSubCoord(cameraCoord.xy, maxSearch, vec2(1, 0));
-
 		if(discontinuity.r == 0.5) {
 	
 			if(subCoord.x <= normalizedDiscontinuity.y)
@@ -291,32 +317,64 @@ float clipONDS(vec4 lightCoord, vec4 cameraCoord, vec4 normalizedDiscontinuity, 
 	
 }
 
+vec4 computeONDSToDisplay(vec2 discontinuity, vec4 normalizedDiscontinuity) {
+
+	if(discontinuity.g > 0.0) {
+		
+		if(normalizedDiscontinuity.z == 1.0) return vec4(1.0, 0.0, 0.0, 0.0);
+		else if(normalizedDiscontinuity.z == 0.0) return vec4(0.0);
+		
+	}
+
+	if(discontinuity.r > 0.0) {
+	
+		if(normalizedDiscontinuity.w == 1.0) return vec4(0.0, 1.0, 0.0, 0.0);
+		else if(normalizedDiscontinuity.w == 0.0) return vec4(0.0);
+		
+	}
+
+	if(discontinuity.g > 0.0 && discontinuity.r > 0.0) return vec4(1.0, 1.0, 0.0, 0.0);
+	if(discontinuity.g > 0.0) return vec4(normalizedDiscontinuity.x, 0.0, 0.0, 0.0);
+	if(discontinuity.r > 0.0) return vec4(0.0, normalizedDiscontinuity.y, 0.0, 0.0);
+
+}
+
 void main()
 {	
 
 	vec4 normalizedLightCoord = shadowCoord / shadowCoord.w;
-	vec4 normalizedCameraCoord = vec4(gl_FragCoord.x/float(width), gl_FragCoord.y/float(height), gl_FragCoord.z, 1);
+	vec4 normalizedCameraCoord = vec4(gl_FragCoord.x/float(width), gl_FragCoord.y/float(height), gl_FragCoord.z, 1.0);
 	float distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;		
 	float shadow = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
 	
 	if(shadow == 1.0) {
 
 		vec2 discontinuity = texture2D(discontinuityMap, normalizedCameraCoord.xy).rg;
-		
+		vec2 subCoord = fract(vec2(normalizedLightCoord.x * float(shadowMapWidth), normalizedLightCoord.y * float(shadowMapHeight)));
+				
 		if(discontinuity.r > 0.0 || discontinuity.g > 0.0) {
 
-			vec4 normalizedDiscontinuity = computeONDS(normalizedLightCoord, normalizedCameraCoord, discontinuity);
-			float fill = clipONDS(normalizedLightCoord, normalizedCameraCoord, normalizedDiscontinuity, discontinuity);
-			gl_FragColor = phong() * shadow * fill;
-			//gl_FragColor = vec4(normalizedDiscontinuity.y, 0.0, 0.0, 0.0);
-			//gl_FragColor = vec4(1.0 - fill, 0.0, 0.0, 0.0);
-			//gl_FragColor = vec4(discontinuity, 0.0, 0.0);
-
+			vec4 normalizedDiscontinuity = computeONDS(normalizedLightCoord, normalizedCameraCoord, discontinuity, subCoord);
+			float fill = clipONDS(normalizedLightCoord, normalizedCameraCoord, normalizedDiscontinuity, discontinuity, subCoord);
+			
+			if(showDiscontinuity == 1)
+				gl_FragColor = vec4(discontinuity, 0.0, 0.0);
+			else if(showONDS == 1)
+				gl_FragColor = computeONDSToDisplay(discontinuity, normalizedDiscontinuity);//vec4(normalizedDiscontinuity.x, normalizedDiscontinuity.y, 0.0, 0.0);
+			else if(showClippedONDS == 1)
+				gl_FragColor = vec4(1.0 - fill, 0.0, 0.0, 0.0);
+			else if(showSubCoord == 1)
+				gl_FragColor = vec4(subCoord.x, subCoord.y, 0.0, 0.0);
+			else
+				gl_FragColor = phong() * shadow * fill;
+			
 		} else {
 
-			gl_FragColor = phong() * shadow;
-			//gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
-		
+			if(showDiscontinuity == 1 || showONDS == 1 || showClippedONDS == 1 || showSubCoord == 1)
+				gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+			else
+				gl_FragColor = phong() * shadow;
+			
 		}
 
 	} else {

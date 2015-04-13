@@ -56,8 +56,7 @@ enum
 	EXPONENTIAL_SHADER = 8,
 	EXPONENTIAL_MOMENT_SHADER = 9,
 	DISCONTINUITY_SHADER = 10,
-	REVECTORIZATION_SHADER = 11,
-	PRE_PERSPECTIVE_DEPTH_SHADER = 12
+	REVECTORIZATION_SHADER = 11
 };
 
 bool temp = false;
@@ -207,9 +206,6 @@ void displaySceneFromLightPOV()
 		glUseProgram(shaderProg[EXPONENTIAL_MOMENT_SHADER]);
 		myGLGeometryViewer.setShaderProg(shaderProg[EXPONENTIAL_MOMENT_SHADER]);
 		myGLGeometryViewer.configureLinearization();		
-	} else if(shadowParams.SMSR) {
-		glUseProgram(shaderProg[PRE_PERSPECTIVE_DEPTH_SHADER]);
-		myGLGeometryViewer.setShaderProg(shaderProg[PRE_PERSPECTIVE_DEPTH_SHADER]);
 	} else {
 		glUseProgram(shaderProg[PHONG_SHADER]);
 		myGLGeometryViewer.setShaderProg(shaderProg[PHONG_SHADER]);
@@ -310,7 +306,7 @@ void renderSMSR(bool computeDiscontinuity)
 	myGLGeometryViewer.setLook(cameraAt);
 	myGLGeometryViewer.setUp(cameraUp);
 	myGLGeometryViewer.configureAmbient(windowWidth, windowHeight);
-	myGLGeometryViewer.configureRevectorization(textures[DISCONTINUITY_MAP_COLOR], textures[SHADOW_MAP_COLOR], shadowParams, windowWidth, windowHeight, computeDiscontinuity);
+	myGLGeometryViewer.configureRevectorization(textures[DISCONTINUITY_MAP_COLOR], textures[SHADOW_MAP_DEPTH], shadowParams, windowWidth, windowHeight, computeDiscontinuity);
 		
 	displayScene();
 	glUseProgram(0);
@@ -442,15 +438,17 @@ void resetShadowParams()
 	
 	shadowParams.bilinearPCF = false;
 	shadowParams.tricubicPCF = false;
-	shadowParams.poissonPCF = false;
-	shadowParams.edgePCF = false;
 	shadowParams.VSM = false;
 	shadowParams.ESM = false;
 	shadowParams.EVSM = false;
 	shadowParams.MSM = false;
 	shadowParams.naive = false;
 	shadowParams.SMSR = false;
-		
+	shadowParams.showDiscontinuityMap = false;
+	shadowParams.showONDS = false;
+	shadowParams.showClippedONDS = false;
+	shadowParams.showSubCoord = false;	
+
 }
 
 void keyboard(unsigned char key, int x, int y) 
@@ -460,81 +458,6 @@ void keyboard(unsigned char key, int x, int y)
 	switch(key) {
 	case 27:
 		exit(0);
-		break;
-	case 't':
-		translationOn = true;
-		rotationOn = false;
-		break;
-	case 'r':
-		rotationOn = true;
-		translationOn = false;
-		break;
-	case '1':
-		shadowParams.maxSearch++;
-		break;
-	case '2':
-		shadowParams.maxSearch--;
-		break;
-	case 'q':
-		lightTranslationOn = !lightTranslationOn;
-		translationOn = false;
-		break;
-	case 'p':
-		psrOn = !psrOn;
-		break;
-	case 'a':
-		animationOn = !animationOn;
-		animation = 0;
-		break;
-	case 'b':
-		resetShadowParams();
-		shadowParams.bilinearPCF = true;
-		break;
-	case 'h':
-		resetShadowParams();
-		shadowParams.tricubicPCF = true;
-		break;
-	case 'o':
-		resetShadowParams();
-		shadowParams.poissonPCF = true;
-		break;
-	case 'e':
-		resetShadowParams();
-		shadowParams.ESM = true;
-		break;
-	case 'v':
-		resetShadowParams();
-		shadowParams.VSM = true;
-		break;
-	case 'l':
-		resetShadowParams();
-		shadowParams.EVSM = true;
-		break;
-	case 'm':
-		resetShadowParams();
-		shadowParams.MSM = true;
-		break;
-	case 'n':
-		resetShadowParams();
-		shadowParams.naive = true;
-		break;
-	case 'u':
-		resetShadowParams();
-		shadowParams.naive = true;
-		shadowParams.SMSR = true;
-	case 'd':
-		shadowParams.adaptiveDepthBias = !shadowParams.adaptiveDepthBias;
-		break;
-	case 'w':
-		printf("LightPosition: %f %f %f\n", sceneLoader->getLightPosition()[0] + lightTranslationVector[0], sceneLoader->getLightPosition()[1] + lightTranslationVector[1], 
-			sceneLoader->getLightPosition()[2] + lightTranslationVector[2]);
-		printf("LightPosition: %f %f %f\n", lightEye[0], lightEye[1], lightEye[2]);
-		printf("CameraPosition: %f %f %f\n", cameraEye[0], cameraEye[1], cameraEye[2]);
-		printf("Global Translation: %f %f %f\n", translationVector[0], translationVector[1], translationVector[2]);
-		printf("Global Rotation: %f %f %f\n", rotationAngles[0], rotationAngles[1], rotationAngles[2]);
-		break;
-	case 'c':
-		cameraOn = !cameraOn;
 		break;
 	}
 
@@ -547,10 +470,14 @@ void specialKeyboard(int key, int x, int y)
 	
 	case GLUT_KEY_UP:
 		if(cameraOn) {
-			if(translationOn)
+			if(translationOn) {
 				cameraEye[1] += vel;
-			if(rotationOn)
+				cameraAt[1] += vel;
+			}
+			if(rotationOn) {
 				cameraEye = glm::mat3(glm::rotate((float)5 * vel, glm::vec3(0, 1, 0))) * cameraEye;
+				cameraAt = glm::mat3(glm::rotate((float)5 * vel, glm::vec3(0, 1, 0))) * cameraAt;
+			}
 		} else {
 			if(translationOn)
 				translationVector[1] += vel;
@@ -563,10 +490,14 @@ void specialKeyboard(int key, int x, int y)
 		break;
 	case GLUT_KEY_DOWN:
 		if(cameraOn) {
-			if(translationOn)
+			if(translationOn) {
 				cameraEye[1] -= vel;
-			if(rotationOn)
+				cameraAt[1] -= vel;
+			}
+			if(rotationOn) {
 				cameraEye = glm::mat3(glm::rotate((float)-5 * vel, glm::vec3(0, 1, 0))) * cameraEye;
+				cameraAt = glm::mat3(glm::rotate((float)-5 * vel, glm::vec3(0, 1, 0))) * cameraAt;
+			}
 		} else {
 			if(translationOn)
 				translationVector[1] -= vel;
@@ -578,10 +509,14 @@ void specialKeyboard(int key, int x, int y)
 		break;
 	case GLUT_KEY_LEFT:
 		if(cameraOn) {
-			if(translationOn)
+			if(translationOn) {
 				cameraEye[0] -= vel;
-			if(rotationOn)
+				cameraAt[0] -= vel;
+			}
+			if(rotationOn) {
 				cameraEye = glm::mat3(glm::rotate((float)-5 * vel, glm::vec3(1, 0, 0))) * cameraEye;
+				cameraAt = glm::mat3(glm::rotate((float)-5 * vel, glm::vec3(1, 0, 0))) * cameraAt;
+			}
 		} else {
 			if(translationOn)
 				translationVector[0] -= vel;
@@ -593,10 +528,14 @@ void specialKeyboard(int key, int x, int y)
 		break;
 	case GLUT_KEY_RIGHT:
 		if(cameraOn) {
-			if(translationOn)
+			if(translationOn) {
 				cameraEye[0] += vel;
-			if(rotationOn)
+				cameraAt[0] += vel;
+			}
+			if(rotationOn) {
 				cameraEye = glm::mat3(glm::rotate((float)5 * vel, glm::vec3(1, 0, 0))) * cameraEye;
+				cameraAt = glm::mat3(glm::rotate((float)5 * vel, glm::vec3(1, 0, 0))) * cameraAt;
+			}
 		} else {
 			if(translationOn)
 				translationVector[0] += vel;
@@ -608,10 +547,14 @@ void specialKeyboard(int key, int x, int y)
 		break;
 	case GLUT_KEY_PAGE_UP:
 		if(cameraOn) {
-			if(translationOn)
+			if(translationOn) {
 				cameraEye[2] += vel;
-			if(rotationOn)
+				cameraAt[2] += vel;
+			}
+			if(rotationOn) {
 				cameraEye = glm::mat3(glm::rotate((float)5 * vel, glm::vec3(0, 0, 1))) * cameraEye;
+				cameraAt = glm::mat3(glm::rotate((float)5 * vel, glm::vec3(0, 0, 1))) * cameraAt;
+			}
 		} else {
 			if(translationOn)
 				translationVector[2] += vel;
@@ -623,10 +566,14 @@ void specialKeyboard(int key, int x, int y)
 		break;
 	case GLUT_KEY_PAGE_DOWN:
 		if(cameraOn) {
-			if(translationOn)
+			if(translationOn) {
 				cameraEye[2] -= vel;
-			if(rotationOn)
+				cameraAt[2] -= vel;
+			}
+			if(rotationOn) {
 				cameraEye = glm::mat3(glm::rotate((float)-5 * vel, glm::vec3(0, 0, 1))) * cameraEye;
+				cameraAt = glm::mat3(glm::rotate((float)-5 * vel, glm::vec3(0, 0, 1))) * cameraAt;
+			}
 		} else {
 			if(translationOn)
 				translationVector[2] -= vel;
@@ -637,6 +584,173 @@ void specialKeyboard(int key, int x, int y)
 			lightTranslationVector[2] -= 5 * vel;
 		break;
 	}
+
+}
+
+void shadowFilteringMenu(int id) {
+
+	switch(id)
+	{
+		case 0:
+			resetShadowParams();
+			shadowParams.bilinearPCF = true;
+			break;
+		case 1:
+			resetShadowParams();
+			shadowParams.tricubicPCF = true;
+			break;
+		case 2:
+			resetShadowParams();
+			shadowParams.VSM = true;
+			break;
+		case 3:
+			resetShadowParams();
+			shadowParams.ESM = true;
+			break;
+		case 4:
+			resetShadowParams();
+			shadowParams.EVSM = true;
+			break;
+		case 5:
+			resetShadowParams();
+			shadowParams.MSM = true;
+			break;
+	}
+
+}
+
+void shadowRevectorizationMenu(int id) {
+
+	switch(id)
+	{
+		case 0:
+			resetShadowParams();
+			shadowParams.SMSR = true;
+			break;
+		case 1:
+			resetShadowParams();
+			shadowParams.SMSR = true;
+			shadowParams.showDiscontinuityMap = true;
+			break;
+		case 2:
+			resetShadowParams();
+			shadowParams.SMSR = true;
+			shadowParams.showONDS = true;
+			break;
+		case 3:
+			resetShadowParams();
+			shadowParams.SMSR = true;
+			shadowParams.showClippedONDS = true;
+			break;
+		case 4:
+			resetShadowParams();
+			shadowParams.SMSR = true;
+			shadowParams.showSubCoord = true;
+			break;
+	}
+
+}
+
+void transformationMenu(int id) {
+
+	switch(id)
+	{
+		case 0:
+			translationOn = true;
+			rotationOn = false;
+			break;
+		case 1:
+			rotationOn = true;
+			translationOn = false;
+			break;
+		case 2:
+			lightTranslationOn = !lightTranslationOn;
+			translationOn = false;
+			break;
+		case 3:
+			cameraOn = !cameraOn;
+			break;
+	}
+
+}
+
+void otherFunctionsMenu(int id) {
+
+	switch(id)
+	{
+		case 0:
+			animationOn = !animationOn;
+			animation = 0;
+			break;
+		case 1:
+			shadowParams.adaptiveDepthBias = !shadowParams.adaptiveDepthBias;
+			break;
+		case 2:
+			psrOn = !psrOn;
+			break;
+		case 3:
+			printf("LightPosition: %f %f %f\n", sceneLoader->getLightPosition()[0] + lightTranslationVector[0], sceneLoader->getLightPosition()[1] + lightTranslationVector[1], 
+				sceneLoader->getLightPosition()[2] + lightTranslationVector[2]);
+			printf("LightPosition: %f %f %f\n", lightEye[0], lightEye[1], lightEye[2]);
+			printf("CameraPosition: %f %f %f\n", cameraEye[0], cameraEye[1], cameraEye[2]);
+			printf("CameraAt: %f %f %f\n", cameraAt[0], cameraAt[1], cameraAt[2]);
+			printf("Global Translation: %f %f %f\n", translationVector[0], translationVector[1], translationVector[2]);
+			printf("Global Rotation: %f %f %f\n", rotationAngles[0], rotationAngles[1], rotationAngles[2]);
+			break;
+	}
+
+}
+
+void mainMenu(int id) {
+
+	switch(id)
+	{
+		case 0:
+			resetShadowParams();
+			shadowParams.naive = true;
+		break;
+	}
+
+}
+
+void createMenu() {
+
+	GLint shadowFilteringMenuID, shadowRevectorizationMenuID, transformationMenuID, otherFunctionsMenuID;
+
+	shadowFilteringMenuID = glutCreateMenu(shadowFilteringMenu);
+		glutAddMenuEntry("Bilinear Percentage-Closer Filtering", 0);
+		glutAddMenuEntry("Tricubic Percentage-Closer Filtering", 1);
+		glutAddMenuEntry("Variance Shadow Mapping", 2);
+		glutAddMenuEntry("Exponential Shadow Mapping", 3);
+		glutAddMenuEntry("Exponential Variance Shadow Mapping", 4);
+		glutAddMenuEntry("Moment Shadow Mapping", 5);
+
+	shadowRevectorizationMenuID = glutCreateMenu(shadowRevectorizationMenu);
+		glutAddMenuEntry("Silhouette Revectorization", 0);
+		glutAddMenuEntry("Discontinuity Map", 1);
+		glutAddMenuEntry("Normalized Discontinuity", 2);
+		glutAddMenuEntry("Clipped Discontinuity", 3);
+		glutAddMenuEntry("Light Sub Coordinates", 4);
+
+	transformationMenuID = glutCreateMenu(transformationMenu);
+		glutAddMenuEntry("Translation", 0);
+		glutAddMenuEntry("Rotation", 1);
+		glutAddMenuEntry("Light Translation [On/Off]", 2);
+		glutAddMenuEntry("Camera Movement [On/Off]", 3);
+
+	otherFunctionsMenuID = glutCreateMenu(otherFunctionsMenu);
+		glutAddMenuEntry("Animation [On/Off]", 0);
+		glutAddMenuEntry("Adaptive Depth Bias [On/Off]", 1);
+		glutAddMenuEntry("Focus on Potential Shadow Receiver [On/Off]", 2);
+		glutAddMenuEntry("Print Data", 3);
+
+	glutCreateMenu(mainMenu);
+		glutAddMenuEntry("Shadow Mapping", 0);
+		glutAddSubMenu("Shadow Filtering", shadowFilteringMenuID);
+		glutAddSubMenu("Shadow Revectorization", shadowRevectorizationMenuID);
+		glutAddSubMenu("Transformation", transformationMenuID);
+		glutAddSubMenu("Other Functions", otherFunctionsMenuID);
+		glutAttachMenu(GLUT_RIGHT_BUTTON);
 
 }
 
@@ -672,11 +786,15 @@ void initGL(char *configurationFile) {
 	float centroid[3];
 	scene->computeCentroid(centroid);
 	cameraEye[0] = sceneLoader->getCameraPosition()[0]; cameraEye[1] = sceneLoader->getCameraPosition()[1]; cameraEye[2] = sceneLoader->getCameraPosition()[2];
-	//cameraAt[0] = centroid[0]; cameraAt[1] = centroid[1]; cameraAt[2] = centroid[2];
 	cameraAt[0] = 0.0; cameraAt[1] = 0.0; cameraAt[2] = 0.0;
 	lightAt[0] = 0.0; lightAt[1] = 0.0; lightAt[2] = 0.0;
 	cameraUp[0] = 0.0; cameraUp[1] = 0.0; cameraUp[2] = 1.0;
 
+	//TODO
+	//discontinuity break
+	//cameraEye[0] = -13.0;	cameraEye[1] = 11.0;	cameraEye[2] = -10.5;
+	//cameraAt[0] = -13.0;	cameraAt[1] = -36.0;	cameraAt[2] = -4.0;
+	
 	shadowParams.shadowMapWidth = shadowMapWidth;
 	shadowParams.shadowMapHeight = shadowMapHeight;
 	shadowParams.maxSearch = 256;
@@ -685,6 +803,7 @@ void initGL(char *configurationFile) {
 	shadowParams.adaptiveDepthBias = true;
 
 	myGLTextureViewer.loadQuad();
+	createMenu();
 
 	if(scene->textureFromImage())
 		for(int num = 0; num < scene->getNumberOfTextures(); num++)
@@ -737,6 +856,7 @@ void initGL(char *configurationFile) {
 	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE)
 		printf("FBO OK\n");
 
+
 	
 }
 
@@ -768,7 +888,6 @@ int main(int argc, char **argv) {
 	initShader("Shaders/LogGaussian/LogGaussianBlur5Y", LOG_GAUSSIAN_Y_SHADER);
 	initShader("Shaders/Discontinuity", DISCONTINUITY_SHADER);
 	initShader("Shaders/Revectorization", REVECTORIZATION_SHADER);
-	initShader("Shaders/PrePerspectiveDepth", PRE_PERSPECTIVE_DEPTH_SHADER);
 	glUseProgram(0);
 
 	glutMainLoop();

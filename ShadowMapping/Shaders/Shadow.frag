@@ -20,8 +20,6 @@ uniform int shadowMapWidth;
 uniform int shadowMapHeight;
 uniform int bilinearPCF;
 uniform int tricubicPCF;
-uniform int poissonPCF;
-uniform int edgePCF;
 uniform int VSM;
 uniform int ESM;
 uniform int EVSM;

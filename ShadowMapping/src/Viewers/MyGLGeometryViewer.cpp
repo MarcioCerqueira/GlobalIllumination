@@ -110,10 +110,6 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glUniform1i(shadowMapBilinearID, shadowParams.bilinearPCF);
 	GLuint shadowMapTriCubicID = glGetUniformLocation(shaderProg, "tricubicPCF");
 	glUniform1i(shadowMapTriCubicID, shadowParams.tricubicPCF);
-	GLuint shadowMapPoissonID = glGetUniformLocation(shaderProg, "poissonPCF");
-	glUniform1i(shadowMapPoissonID, shadowParams.poissonPCF);
-	GLuint shadowMapEdgeID = glGetUniformLocation(shaderProg, "edgePCF");
-	glUniform1i(shadowMapEdgeID, shadowParams.edgePCF);
 	GLuint shadowMapESMID = glGetUniformLocation(shaderProg, "ESM");
 	glUniform1i(shadowMapESMID, shadowParams.ESM);
 	GLuint shadowMapEVSMID = glGetUniformLocation(shaderProg, "EVSM");
@@ -125,27 +121,14 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glUniform1i(shadowMapDepthBiasID, shadowParams.adaptiveDepthBias);
 	GLuint shadowMap = glGetUniformLocation(shaderProg, "shadowMap");
 	glUniform1i(shadowMap, 0);
-	if(shadowParams.edgePCF) {
-		GLuint edgeMap = glGetUniformLocation(shaderProg, "edgeMap");
-		glUniform1i(edgeMap, 1);
-	}
+
 	configureLinearization();
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, shadowParams.shadowMap);
-	if(shadowParams.edgePCF) {
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, shadowParams.edgeMap);
-		glGenerateMipmap(GL_TEXTURE_2D);
-	}
 
 	glActiveTexture(GL_TEXTURE0);
 	glDisable(GL_TEXTURE_2D);
-	if(shadowParams.edgePCF) {
-		glActiveTexture(GL_TEXTURE1);
-		glDisable(GL_TEXTURE_2D);
-	}
-
 
 }
 
@@ -240,8 +223,16 @@ void MyGLGeometryViewer::configureRevectorization(GLuint discontinuityMap, GLuin
 	glUniformMatrix4fv(lightMVPID, 1, GL_FALSE, &shadowParams.lightMVP[0][0]);
 	GLuint inverseLightMVPID = glGetUniformLocation(shaderProg, "inverseLightMVP");
 	glUniformMatrix4fv(inverseLightMVPID, 1, GL_FALSE, &inverseMVP[0][0]);
-
+	
 	if(!computeDiscontinuity) {
+		GLuint showDiscontinuityMapID = glGetUniformLocation(shaderProg, "showDiscontinuity");
+		glUniform1i(showDiscontinuityMapID, shadowParams.showDiscontinuityMap);
+		GLuint showONDSID = glGetUniformLocation(shaderProg, "showONDS");
+		glUniform1i(showONDSID, shadowParams.showONDS);
+		GLuint showClippedONDSID = glGetUniformLocation(shaderProg, "showClippedONDS");
+		glUniform1i(showClippedONDSID, shadowParams.showClippedONDS);
+		GLuint showSubCoordID = glGetUniformLocation(shaderProg, "showSubCoord");
+		glUniform1i(showSubCoordID, shadowParams.showSubCoord);
 		GLuint discontinuityID = glGetUniformLocation(shaderProg, "discontinuityMap");
 		glUniform1i(discontinuityID, 7);
 	}
