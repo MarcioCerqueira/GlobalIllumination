@@ -312,18 +312,34 @@ float adaptiveDepthBias(vec3 normalizedShadowCoord)
 }
 */
 
+float computePreEvaluationBasedOnNormalOrientation()
+{
+
+	vec3 L = normalize(lightPosition.xyz - v);   
+	vec3 N2 = N;
+
+	if(!gl_FrontFacing)
+		N2 *= -1;
+
+	if(max(dot(N2,L), 0.0) == 0) 
+		return 0.0;
+	else
+		return 1.0;
+
+}
+
 void main()
 {	
 
 	vec4 color = phong();
 	vec4 normalizedShadowCoord = shadowCoord / shadowCoord.w;
-	
 	//if(useAdaptiveDepthBias == 1) 
 		//normalizedShadowCoord.z = adaptiveDepthBias(normalizedShadowCoord);
 
 	float shadow = 1.0;
+	shadow = computePreEvaluationBasedOnNormalOrientation();
 
-	if(shadowCoord.w > 0.0) {
+	if(shadowCoord.w > 0.0 && shadow == 1.0) {
 
 		if(naive == 1) {
 			float distanceFromLight = texture2D(shadowMap, vec2(normalizedShadowCoord.st)).z;		

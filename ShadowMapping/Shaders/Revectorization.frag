@@ -339,14 +339,34 @@ vec4 computeONDSToDisplay(vec2 discontinuity, vec4 normalizedDiscontinuity) {
 
 }
 
+float computePreEvaluationBasedOnNormalOrientation()
+{
+
+	vec3 L = normalize(lightPosition.xyz - v);   
+	vec3 N2 = N;
+
+	if(!gl_FrontFacing)
+		N2 *= -1;
+
+	if(max(dot(N2,L), 0.0) == 0) 
+		return 0.0;
+	else
+		return 1.0;
+
+}
+
 void main()
 {	
 
 	vec4 normalizedLightCoord = shadowCoord / shadowCoord.w;
 	vec4 normalizedCameraCoord = vec4(gl_FragCoord.x/float(width), gl_FragCoord.y/float(height), gl_FragCoord.z, 1.0);
-	float distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;		
-	float shadow = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
+	float shadow = computePreEvaluationBasedOnNormalOrientation();
 	
+	if(shadow == 1.0) {
+		float distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;		
+		shadow = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
+	}
+
 	if(shadow == 1.0) {
 
 		vec2 discontinuity = texture2D(discontinuityMap, normalizedCameraCoord.xy).rg;
