@@ -9,13 +9,14 @@ attribute vec3 color;
 attribute vec2 uv;
 uniform mat3 normalMatrix;
 uniform mat4 MVP;
+uniform mat4 MV;
 uniform mat4 lightMVP;
 
 void main(void)
 {
 
    shadowCoord = lightMVP * vec4(vertex, 1);
-   v = vertex;
+   v = vec3(MV * vec4(vertex, 1));
    N = normalize(normalMatrix * normal);
    uvTexture = uv;
    meshColor = color;

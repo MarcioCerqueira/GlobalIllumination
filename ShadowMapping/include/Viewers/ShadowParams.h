@@ -24,6 +24,7 @@ typedef struct ShadowParams
 	bool showONDS; //SMSR
 	bool showClippedONDS; //SMSR
 	bool showSubCoord; //SMSR
+	bool RPCF; //SMSR
 	GLuint shadowMap;
 } ShadowParams;
 

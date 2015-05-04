@@ -40,11 +40,13 @@ public:
 	void setProjectionMatrix(glm::mat4 projection) { this->projection = projection; }
 	void setViewMatrix(glm::mat4 view) { this->view = view; }
 	void setModelMatrix(glm::mat4 model) { this->model = model; }
+	void setIsCameraViewpoint(bool isCameraViewpoint) { this->isCameraViewpoint = isCameraViewpoint; }
 	
 	glm::mat4 projection;
 	glm::mat4 view;
 	glm::mat4 model;
 	glm::mat4 psr;
+	glm::mat3 normalMatrix;
 	glm::vec3 eye;
 	glm::vec3 look;
 	glm::vec3 up;
@@ -52,7 +54,8 @@ public:
 	float zNear;
 	float zFar;
 	GLuint shaderProg;
-	
+	bool hasNormalMatrixBeenSet;
+	bool isCameraViewpoint;
 };
 
 #endif

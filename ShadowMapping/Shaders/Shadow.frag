@@ -126,7 +126,7 @@ float PCF(vec3 normalizedShadowCoord)
 	float incrWidth = 1.0/float(shadowMapWidth);
 	float incrHeight = 1.0/float(shadowMapHeight);
 	int illuminationCount = 0;
-	int eachAxis = 5;
+	int eachAxis = 3;
 	int numberOfSamples = eachAxis * eachAxis;
 	float offset = (float(eachAxis) - 1.0) * 0.5;
 	float distanceFromLight;

@@ -6,6 +6,8 @@ MyGLGeometryViewer::MyGLGeometryViewer()
 	fov = 45.f;
 	zNear = 1.0f;
 	zFar = 1000.0f;
+	normalMatrix = glm::mat3(1.0);
+	hasNormalMatrixBeenSet = false;
 
 }
 
@@ -69,7 +71,11 @@ void MyGLGeometryViewer::configurePhong(glm::vec3 lightPosition, glm::vec3 camer
 
 	glm::mat4 mvp = projection * view * model;
 	glm::mat4 mv = view * model;
-	glm::mat3 normalMatrix = glm::inverseTranspose(glm::mat3(mv));
+
+	if(isCameraViewpoint && !hasNormalMatrixBeenSet) {
+		normalMatrix = glm::inverseTranspose(glm::mat3(mv));
+		hasNormalMatrixBeenSet = true;
+	} 
 
 	GLuint mvpId = glGetUniformLocation(shaderProg, "MVP");
 	glUniformMatrix4fv(mvpId, 1, GL_FALSE, &mvp[0][0]);
@@ -235,6 +241,10 @@ void MyGLGeometryViewer::configureRevectorization(GLuint discontinuityMap, GLuin
 		glUniform1i(showSubCoordID, shadowParams.showSubCoord);
 		GLuint discontinuityID = glGetUniformLocation(shaderProg, "discontinuityMap");
 		glUniform1i(discontinuityID, 7);
+		GLuint SMSRID = glGetUniformLocation(shaderProg, "SMSR");
+		glUniform1i(SMSRID, shadowParams.SMSR);
+		GLuint RPCFID = glGetUniformLocation(shaderProg, "RPCF");
+		glUniform1i(RPCFID, shadowParams.RPCF);
 	}
 
 	GLuint shadowID = glGetUniformLocation(shaderProg, "shadowMap");

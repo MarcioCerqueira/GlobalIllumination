@@ -120,6 +120,7 @@ bool psrOn = false;
 bool animationOn = false;
 bool cameraOn = false;
 
+
 int vel = 1;
 float animation = -1800;
 	
@@ -223,7 +224,8 @@ void displaySceneFromLightPOV()
 	myGLGeometryViewer.setLook(lightAt);
 	myGLGeometryViewer.setUp(cameraUp);
 	myGLGeometryViewer.configureAmbient(shadowMapWidth, shadowMapHeight);
-	
+	myGLGeometryViewer.setIsCameraViewpoint(false);
+
 	glm::mat4 projection = myGLGeometryViewer.getProjectionMatrix();
 	glm::mat4 view = myGLGeometryViewer.getViewMatrix();
 	glm::mat4 model = myGLGeometryViewer.getModelMatrix();
@@ -274,7 +276,8 @@ void displaySceneFromCameraPOV()
 	myGLGeometryViewer.setUp(cameraUp);
 	myGLGeometryViewer.configureAmbient(windowWidth, windowHeight);
 	myGLGeometryViewer.configureShadow(shadowParams);
-	
+	myGLGeometryViewer.setIsCameraViewpoint(true);
+
 	displayScene();
 	glUseProgram(0);
 
@@ -285,11 +288,14 @@ void renderSMSR(bool computeDiscontinuity)
 
 
 	glViewport(0, 0, windowWidth, windowHeight);
-	if(!computeDiscontinuity)
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	
-	updateLight();
-	lightEye = glm::mat3(glm::rotate((float)180.0, glm::vec3(0, 1, 0))) * lightEye;
+	if(!computeDiscontinuity)
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	
+	if(computeDiscontinuity || shadowParams.RPCF) {
+		updateLight();
+		lightEye = glm::mat3(glm::rotate((float)180.0, glm::vec3(0, 1, 0))) * lightEye;
+	}
 
 	if(computeDiscontinuity) {
 		glUseProgram(shaderProg[DISCONTINUITY_SHADER]);
@@ -307,7 +313,8 @@ void renderSMSR(bool computeDiscontinuity)
 	myGLGeometryViewer.setUp(cameraUp);
 	myGLGeometryViewer.configureAmbient(windowWidth, windowHeight);
 	myGLGeometryViewer.configureRevectorization(textures[DISCONTINUITY_MAP_COLOR], textures[SHADOW_MAP_DEPTH], shadowParams, windowWidth, windowHeight, computeDiscontinuity);
-		
+	myGLGeometryViewer.setIsCameraViewpoint(true);
+
 	displayScene();
 	glUseProgram(0);
 
@@ -398,13 +405,17 @@ void display()
 	glDisable(GL_CULL_FACE);
 	glDisable(GL_POLYGON_OFFSET_FILL);
 	
-	if(shadowParams.SMSR) {
+	if(shadowParams.SMSR || shadowParams.RPCF) {
 		
-		glBindFramebuffer(GL_FRAMEBUFFER, discontinuityFrameBuffer);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		renderSMSR(true);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);		
+		if(shadowParams.SMSR) {
 		
+			glBindFramebuffer(GL_FRAMEBUFFER, discontinuityFrameBuffer);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			renderSMSR(true);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);		
+		
+		}
+
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0);
 		renderSMSR(false);
 		
@@ -448,6 +459,7 @@ void resetShadowParams()
 	shadowParams.showONDS = false;
 	shadowParams.showClippedONDS = false;
 	shadowParams.showSubCoord = false;	
+	shadowParams.RPCF = false;
 
 }
 
@@ -619,6 +631,20 @@ void shadowFilteringMenu(int id) {
 
 }
 
+void shadowRevectorizationBasedFilteringMenu(int id) {
+
+	switch(id)
+	{
+		case 0:
+			resetShadowParams();
+			shadowParams.RPCF = true;
+			//TODO
+			//cameraEye[0] = -17.0; cameraEye[1] = 3.1; cameraEye[2] = -6.5;
+			//cameraAt[0] = -17.0; cameraAt[1] = -44.0; cameraAt[2] = -4.0;
+			break;
+	}
+}
+
 void shadowRevectorizationMenu(int id) {
 
 	switch(id)
@@ -626,6 +652,13 @@ void shadowRevectorizationMenu(int id) {
 		case 0:
 			resetShadowParams();
 			shadowParams.SMSR = true;
+			//TODO
+			//discontinuity break
+			//cameraEye[0] = -17.0;	cameraEye[1] = 4.0;	cameraEye[2] = -23;
+			//cameraAt[0] = -17.0;	cameraAt[1] = -42.0;	cameraAt[2] = -12.0;
+			//filtering
+			cameraEye[0] = -17.0; cameraEye[1] = 3.1; cameraEye[2] = -6.5;
+			cameraAt[0] = -17.0; cameraAt[1] = -44.0; cameraAt[2] = -4.0;
 			break;
 		case 1:
 			resetShadowParams();
@@ -715,7 +748,7 @@ void mainMenu(int id) {
 
 void createMenu() {
 
-	GLint shadowFilteringMenuID, shadowRevectorizationMenuID, transformationMenuID, otherFunctionsMenuID;
+	GLint shadowFilteringMenuID, shadowRevectorizationMenuID, shadowRevectorizationBasedFilteringMenuID, transformationMenuID, otherFunctionsMenuID;
 
 	shadowFilteringMenuID = glutCreateMenu(shadowFilteringMenu);
 		glutAddMenuEntry("Bilinear Percentage-Closer Filtering", 0);
@@ -731,6 +764,9 @@ void createMenu() {
 		glutAddMenuEntry("Normalized Discontinuity", 2);
 		glutAddMenuEntry("Clipped Discontinuity", 3);
 		glutAddMenuEntry("Light Sub Coordinates", 4);
+		
+	shadowRevectorizationBasedFilteringMenuID = glutCreateMenu(shadowRevectorizationBasedFilteringMenu);
+		glutAddMenuEntry("Percentage-Closer Filtering", 0);
 
 	transformationMenuID = glutCreateMenu(transformationMenu);
 		glutAddMenuEntry("Translation", 0);
@@ -748,6 +784,7 @@ void createMenu() {
 		glutAddMenuEntry("Shadow Mapping", 0);
 		glutAddSubMenu("Shadow Filtering", shadowFilteringMenuID);
 		glutAddSubMenu("Shadow Revectorization", shadowRevectorizationMenuID);
+		glutAddSubMenu("Revectorization-based Shadow Filtering", shadowRevectorizationBasedFilteringMenuID);
 		glutAddSubMenu("Transformation", transformationMenuID);
 		glutAddSubMenu("Other Functions", otherFunctionsMenuID);
 		glutAttachMenu(GLUT_RIGHT_BUTTON);
@@ -790,11 +827,6 @@ void initGL(char *configurationFile) {
 	lightAt[0] = 0.0; lightAt[1] = 0.0; lightAt[2] = 0.0;
 	cameraUp[0] = 0.0; cameraUp[1] = 0.0; cameraUp[2] = 1.0;
 
-	//TODO
-	//discontinuity break
-	//cameraEye[0] = -13.0;	cameraEye[1] = 11.0;	cameraEye[2] = -10.5;
-	//cameraAt[0] = -13.0;	cameraAt[1] = -36.0;	cameraAt[2] = -4.0;
-	
 	shadowParams.shadowMapWidth = shadowMapWidth;
 	shadowParams.shadowMapHeight = shadowMapHeight;
 	shadowParams.maxSearch = 256;

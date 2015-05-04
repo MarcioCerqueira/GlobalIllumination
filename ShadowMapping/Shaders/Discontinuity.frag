@@ -1,14 +1,32 @@
 uniform sampler2D shadowMap;
 varying vec4 shadowCoord;
+varying vec3 N;
+varying vec3 v;
+uniform vec3 lightPosition;
 uniform int width;
 uniform int height;
 uniform int shadowMapWidth;
 uniform int shadowMapHeight;
 
+float computePreEvaluationBasedOnNormalOrientation()
+{
+
+	vec3 L = normalize(lightPosition.xyz - v);   
+	vec3 N2 = N;
+
+	if(!gl_FrontFacing)
+		N2 *= -1;
+
+	if(max(dot(N2,L), 0.0) == 0) 
+		return 0.0;
+	else
+		return 1.0;
+
+}
+
 void main()
 {	
 
-	
 	vec4 normalizedLightCoord = shadowCoord / shadowCoord.w;
 	
 	vec2 shadowMapSize = vec2(shadowMapWidth, shadowMapHeight);
@@ -20,10 +38,17 @@ void main()
 	
 	} else {
 
-		float distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
-		float center = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
-	    bool isCenterUmbra = !bool(center);
-		
+
+		float center = computePreEvaluationBasedOnNormalOrientation();
+		bool isCenterUmbra = !bool(center);
+		float distanceFromLight;
+
+		if(!isCenterUmbra) {
+			distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
+			center = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
+			isCenterUmbra = !bool(center);
+		}
+
 		float red = 0.0;
 		float green = 0.0;
 	
