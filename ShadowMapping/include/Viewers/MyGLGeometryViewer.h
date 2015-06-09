@@ -24,8 +24,7 @@ public:
 	void configureShadow(ShadowParams shadowParams);
 	void configureMoments(ShadowParams shadowParams);
 	void configurePSRMatrix(int xmin, int xmax, int ymin, int ymax, int scaleRange, int width, int height);
-	void configureRevectorization(GLuint discontinuityMap, GLuint shadowMap, ShadowParams shadowParams, int imageWidth, int imageHeight, 
-		bool computeDiscontinuity);
+	void configureRevectorization(ShadowParams shadowParams, int imageWidth, int imageHeight, bool computeDiscontinuity);
 	void drawPlane(float x, float y, float z);
 	void drawMesh(GLuint *VBOs, int numberOfIndices, int numberOfTexCoords, int numberOfColors, bool textureFromImage, GLuint texture);
 	glm::mat4 getProjectionMatrix() { return projection; }

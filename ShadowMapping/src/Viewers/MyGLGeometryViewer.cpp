@@ -202,8 +202,7 @@ void MyGLGeometryViewer::configurePSRMatrix(int xmin, int xmax, int ymin, int ym
 
 }
 
-void MyGLGeometryViewer::configureRevectorization(GLuint discontinuityMap, GLuint shadowMap, ShadowParams shadowParams, int imageWidth, int imageHeight, 
-	bool computeDiscontinuity)
+void MyGLGeometryViewer::configureRevectorization(ShadowParams shadowParams, int imageWidth, int imageHeight, bool computeDiscontinuity)
 {
 
 	glm::mat4 bias;
@@ -229,7 +228,9 @@ void MyGLGeometryViewer::configureRevectorization(GLuint discontinuityMap, GLuin
 	glUniformMatrix4fv(lightMVPID, 1, GL_FALSE, &shadowParams.lightMVP[0][0]);
 	GLuint inverseLightMVPID = glGetUniformLocation(shaderProg, "inverseLightMVP");
 	glUniformMatrix4fv(inverseLightMVPID, 1, GL_FALSE, &inverseMVP[0][0]);
-	
+	GLuint RSMSFID = glGetUniformLocation(shaderProg, "RSMSF");
+	glUniform1i(RSMSFID, shadowParams.RSMSF);
+
 	if(!computeDiscontinuity) {
 		GLuint showDiscontinuityMapID = glGetUniformLocation(shaderProg, "showDiscontinuity");
 		glUniform1i(showDiscontinuityMapID, shadowParams.showDiscontinuityMap);
@@ -245,19 +246,21 @@ void MyGLGeometryViewer::configureRevectorization(GLuint discontinuityMap, GLuin
 		glUniform1i(SMSRID, shadowParams.SMSR);
 		GLuint RPCFID = glGetUniformLocation(shaderProg, "RPCF");
 		glUniform1i(RPCFID, shadowParams.RPCF);
+		GLuint RPCFSubCoordID = glGetUniformLocation(shaderProg, "RPCFSubCoordAccuracy");
+		glUniform1i(RPCFSubCoordID, shadowParams.RPCFSubCoordAccuracy);
 	}
 
 	GLuint shadowID = glGetUniformLocation(shaderProg, "shadowMap");
 	glUniform1i(shadowID, 8);
-	
+
 	if(!computeDiscontinuity) {
 		glActiveTexture(GL_TEXTURE7);
-		glBindTexture(GL_TEXTURE_2D, discontinuityMap);
+		glBindTexture(GL_TEXTURE_2D, shadowParams.discontinuityMap);
 		glGenerateMipmap(GL_TEXTURE_2D);
 	}
 
 	glActiveTexture(GL_TEXTURE8);
-	glBindTexture(GL_TEXTURE_2D, shadowMap);
+	glBindTexture(GL_TEXTURE_2D, shadowParams.shadowMap);
 	glGenerateMipmap(GL_TEXTURE_2D);
 
 	if(!computeDiscontinuity) {

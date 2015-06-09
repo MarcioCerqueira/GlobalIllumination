@@ -288,11 +288,9 @@ void renderSMSR(bool computeDiscontinuity)
 
 
 	glViewport(0, 0, windowWidth, windowHeight);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	
-	if(!computeDiscontinuity)
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	
-	if(computeDiscontinuity || shadowParams.RPCF) {
+	if(computeDiscontinuity || shadowParams.RPCF || shadowParams.RPCFSubCoordAccuracy) {
 		updateLight();
 		lightEye = glm::mat3(glm::rotate((float)180.0, glm::vec3(0, 1, 0))) * lightEye;
 	}
@@ -300,10 +298,13 @@ void renderSMSR(bool computeDiscontinuity)
 	if(computeDiscontinuity) {
 		glUseProgram(shaderProg[DISCONTINUITY_SHADER]);
 		myGLGeometryViewer.setShaderProg(shaderProg[DISCONTINUITY_SHADER]);
-	} else {
+	} else if(shadowParams.SMSR || shadowParams.RPCF || shadowParams.RSMSF || shadowParams.RPCFSubCoordAccuracy){
 		glUseProgram(shaderProg[REVECTORIZATION_SHADER]);
 		myGLGeometryViewer.setShaderProg(shaderProg[REVECTORIZATION_SHADER]);
 	}
+
+	shadowParams.shadowMap = textures[SHADOW_MAP_DEPTH];
+	shadowParams.discontinuityMap = textures[DISCONTINUITY_MAP_COLOR];
 
 	shadowParams.lightMVP = lightMVP;
 	shadowParams.lightMV = lightMV;
@@ -312,7 +313,7 @@ void renderSMSR(bool computeDiscontinuity)
 	myGLGeometryViewer.setLook(cameraAt);
 	myGLGeometryViewer.setUp(cameraUp);
 	myGLGeometryViewer.configureAmbient(windowWidth, windowHeight);
-	myGLGeometryViewer.configureRevectorization(textures[DISCONTINUITY_MAP_COLOR], textures[SHADOW_MAP_DEPTH], shadowParams, windowWidth, windowHeight, computeDiscontinuity);
+	myGLGeometryViewer.configureRevectorization(shadowParams, windowWidth, windowHeight, computeDiscontinuity);
 	myGLGeometryViewer.setIsCameraViewpoint(true);
 
 	displayScene();
@@ -374,6 +375,7 @@ void display()
 	displaySceneFromLightPOV();
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);	
 	
+	
 	if(shadowParams.VSM || shadowParams.ESM || shadowParams.EVSM || shadowParams.MSM) {
 
 		glBindFramebuffer(GL_FRAMEBUFFER, gaussianXFrameBuffer);
@@ -405,9 +407,9 @@ void display()
 	glDisable(GL_CULL_FACE);
 	glDisable(GL_POLYGON_OFFSET_FILL);
 	
-	if(shadowParams.SMSR || shadowParams.RPCF) {
+	if(shadowParams.SMSR || shadowParams.RPCF || shadowParams.RSMSF || shadowParams.RPCFSubCoordAccuracy) {
 		
-		if(shadowParams.SMSR) {
+		if(shadowParams.SMSR || shadowParams.RSMSF) {
 		
 			glBindFramebuffer(GL_FRAMEBUFFER, discontinuityFrameBuffer);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -460,6 +462,8 @@ void resetShadowParams()
 	shadowParams.showClippedONDS = false;
 	shadowParams.showSubCoord = false;	
 	shadowParams.RPCF = false;
+	shadowParams.RPCFSubCoordAccuracy = false;
+	shadowParams.RSMSF = false;
 
 }
 
@@ -614,6 +618,8 @@ void shadowFilteringMenu(int id) {
 		case 2:
 			resetShadowParams();
 			shadowParams.VSM = true;
+			cameraEye[0] = -17.0; cameraEye[1] = 3.1; cameraEye[2] = -6.5;
+			cameraAt[0] = -17.0; cameraAt[1] = -44.0; cameraAt[2] = -4.0;
 			break;
 		case 3:
 			resetShadowParams();
@@ -642,6 +648,17 @@ void shadowRevectorizationBasedFilteringMenu(int id) {
 			//cameraEye[0] = -17.0; cameraEye[1] = 3.1; cameraEye[2] = -6.5;
 			//cameraAt[0] = -17.0; cameraAt[1] = -44.0; cameraAt[2] = -4.0;
 			break;
+		case 1:
+			resetShadowParams();
+			shadowParams.RPCFSubCoordAccuracy = true;
+			break;
+		case 2:
+			resetShadowParams();
+			shadowParams.RSMSF = true;
+			//TODO
+			//cameraEye[0] = -17.0; cameraEye[1] = 3.1; cameraEye[2] = -6.5;
+			//cameraAt[0] = -17.0; cameraAt[1] = -44.0; cameraAt[2] = -4.0;
+			break;
 	}
 }
 
@@ -657,8 +674,8 @@ void shadowRevectorizationMenu(int id) {
 			//cameraEye[0] = -17.0;	cameraEye[1] = 4.0;	cameraEye[2] = -23;
 			//cameraAt[0] = -17.0;	cameraAt[1] = -42.0;	cameraAt[2] = -12.0;
 			//filtering
-			cameraEye[0] = -17.0; cameraEye[1] = 3.1; cameraEye[2] = -6.5;
-			cameraAt[0] = -17.0; cameraAt[1] = -44.0; cameraAt[2] = -4.0;
+			//cameraEye[0] = -17.0; cameraEye[1] = 3.1; cameraEye[2] = -6.5;
+			//cameraAt[0] = -17.0; cameraAt[1] = -44.0; cameraAt[2] = -4.0;
 			break;
 		case 1:
 			resetShadowParams();
@@ -674,6 +691,8 @@ void shadowRevectorizationMenu(int id) {
 			resetShadowParams();
 			shadowParams.SMSR = true;
 			shadowParams.showClippedONDS = true;
+			//cameraEye[0] = 14.0; cameraEye[1] = -3; cameraEye[2] = -5.5;
+			//cameraAt[0] = 14.0; cameraAt[1] = -50.0; cameraAt[2] = -3.0;
 			break;
 		case 4:
 			resetShadowParams();
@@ -767,6 +786,8 @@ void createMenu() {
 		
 	shadowRevectorizationBasedFilteringMenuID = glutCreateMenu(shadowRevectorizationBasedFilteringMenu);
 		glutAddMenuEntry("Percentage-Closer Filtering", 0);
+		glutAddMenuEntry("Percentage-Closer Filtering (Sub-Coord Accuracy)", 1);
+		glutAddMenuEntry("Shadow Map Silhouette Filtering", 2);
 
 	transformationMenuID = glutCreateMenu(transformationMenu);
 		glutAddMenuEntry("Translation", 0);
@@ -827,6 +848,7 @@ void initGL(char *configurationFile) {
 	lightAt[0] = 0.0; lightAt[1] = 0.0; lightAt[2] = 0.0;
 	cameraUp[0] = 0.0; cameraUp[1] = 0.0; cameraUp[2] = 1.0;
 
+	
 	shadowParams.shadowMapWidth = shadowMapWidth;
 	shadowParams.shadowMapHeight = shadowMapHeight;
 	shadowParams.maxSearch = 256;
@@ -844,7 +866,7 @@ void initGL(char *configurationFile) {
 	myGLTextureViewer.loadRGBTexture((float*)NULL, textures, SHADOW_MAP_COLOR, shadowMapWidth, shadowMapHeight);
 	myGLTextureViewer.loadRGBTexture((float*)NULL, textures, GAUSSIAN_X_MAP_COLOR, windowWidth, windowHeight);
 	myGLTextureViewer.loadRGBTexture((float*)NULL, textures, GAUSSIAN_Y_MAP_COLOR, windowWidth, windowHeight);
-	myGLTextureViewer.loadRGBTexture((float*)NULL, textures, RESULTING_SHADOW_MAP_COLOR, windowWidth, windowHeight);
+	myGLTextureViewer.loadRGBTexture((float*)NULL, textures, RESULTING_SHADOW_MAP_COLOR, windowWidth, windowHeight, GL_NEAREST);
 	myGLTextureViewer.loadRGBTexture((float*)NULL, textures, DISCONTINUITY_MAP_COLOR, windowWidth, windowHeight, GL_NEAREST);
 
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, SHADOW_MAP_DEPTH, shadowMapWidth, shadowMapHeight);
@@ -914,10 +936,10 @@ int main(int argc, char **argv) {
 	initShader("Shaders/Moments", MOMENTS_SHADER);
 	initShader("Shaders/Exponential", EXPONENTIAL_SHADER);
 	initShader("Shaders/ExponentialMoments", EXPONENTIAL_MOMENT_SHADER);
-	initShader("Shaders/Gaussian/GaussianBlur5X", GAUSSIAN_X_SHADER);
-	initShader("Shaders/Gaussian/GaussianBlur5Y", GAUSSIAN_Y_SHADER);
-	initShader("Shaders/LogGaussian/LogGaussianBlur5X", LOG_GAUSSIAN_X_SHADER);
-	initShader("Shaders/LogGaussian/LogGaussianBlur5Y", LOG_GAUSSIAN_Y_SHADER);
+	initShader("Shaders/Gaussian/GaussianBlur3X", GAUSSIAN_X_SHADER);
+	initShader("Shaders/Gaussian/GaussianBlur3Y", GAUSSIAN_Y_SHADER);
+	initShader("Shaders/LogGaussian/LogGaussianBlur3X", LOG_GAUSSIAN_X_SHADER);
+	initShader("Shaders/LogGaussian/LogGaussianBlur3Y", LOG_GAUSSIAN_Y_SHADER);
 	initShader("Shaders/Discontinuity", DISCONTINUITY_SHADER);
 	initShader("Shaders/Revectorization", REVECTORIZATION_SHADER);
 	glUseProgram(0);
