@@ -119,9 +119,11 @@ bool rotationOn = false;
 bool psrOn = false;
 bool animationOn = false;
 bool cameraOn = false;
-
+bool shadowIntensityOn = false;
 
 int vel = 1;
+//+900 
+//-150
 float animation = -1800;
 	
 float xmin, xmax, ymin, ymax;
@@ -457,7 +459,8 @@ void resetShadowParams()
 	shadowParams.MSM = false;
 	shadowParams.naive = false;
 	shadowParams.SMSR = false;
-	shadowParams.showDiscontinuityMap = false;
+	shadowParams.showEnteringDiscontinuityMap = false;
+	shadowParams.showExitingDiscontinuityMap = false;
 	shadowParams.showONDS = false;
 	shadowParams.showClippedONDS = false;
 	shadowParams.showSubCoord = false;	
@@ -470,7 +473,6 @@ void resetShadowParams()
 void keyboard(unsigned char key, int x, int y) 
 {
 
-	
 	switch(key) {
 	case 27:
 		exit(0);
@@ -502,7 +504,8 @@ void specialKeyboard(int key, int x, int y)
 		}
 		if(lightTranslationOn)
 			lightTranslationVector[1] += 5 * vel;
-		
+		if(shadowIntensityOn)
+			shadowParams.shadowIntensity += 0.05;
 		break;
 	case GLUT_KEY_DOWN:
 		if(cameraOn) {
@@ -522,6 +525,8 @@ void specialKeyboard(int key, int x, int y)
 		}
 		if(lightTranslationOn)
 			lightTranslationVector[1] -= 5 * vel;
+		if(shadowIntensityOn)
+			shadowParams.shadowIntensity -= 0.05;
 		break;
 	case GLUT_KEY_LEFT:
 		if(cameraOn) {
@@ -618,8 +623,6 @@ void shadowFilteringMenu(int id) {
 		case 2:
 			resetShadowParams();
 			shadowParams.VSM = true;
-			cameraEye[0] = -17.0; cameraEye[1] = 3.1; cameraEye[2] = -6.5;
-			cameraAt[0] = -17.0; cameraAt[1] = -44.0; cameraAt[2] = -4.0;
 			break;
 		case 3:
 			resetShadowParams();
@@ -656,8 +659,11 @@ void shadowRevectorizationBasedFilteringMenu(int id) {
 			resetShadowParams();
 			shadowParams.RSMSF = true;
 			//TODO
-			//cameraEye[0] = -17.0; cameraEye[1] = 3.1; cameraEye[2] = -6.5;
-			//cameraAt[0] = -17.0; cameraAt[1] = -44.0; cameraAt[2] = -4.0;
+			//cameraEye[0] = 1.0; cameraEye[1] = -6.0; cameraEye[2] = 8.0;
+			//cameraAt[0] = 1.0; cameraAt[1] = -31.0; cameraAt[2] = 48.0;
+			//cameraEye[0] = -2.0; cameraEye[1] = -5.0; cameraEye[2] = -36.0;
+			//cameraAt[0] = -2.0; cameraAt[1] = -30.0; cameraAt[2] = 4.0;
+			
 			break;
 	}
 }
@@ -678,25 +684,40 @@ void shadowRevectorizationMenu(int id) {
 			//cameraAt[0] = -17.0; cameraAt[1] = -44.0; cameraAt[2] = -4.0;
 			break;
 		case 1:
-			resetShadowParams();
-			shadowParams.SMSR = true;
-			shadowParams.showDiscontinuityMap = true;
+			shadowParams.showEnteringDiscontinuityMap = true;
+			shadowParams.showExitingDiscontinuityMap = false;
+			shadowParams.showONDS = false;
+			shadowParams.showClippedONDS = false;
+			shadowParams.showSubCoord = false;
+			//cameraEye[0] = -17.0; cameraEye[1] = 3.1; cameraEye[2] = -6.5;
+			//cameraAt[0] = -17.0; cameraAt[1] = -44.0; cameraAt[2] = -4.0;
 			break;
 		case 2:
-			resetShadowParams();
-			shadowParams.SMSR = true;
-			shadowParams.showONDS = true;
+			shadowParams.showEnteringDiscontinuityMap = false;
+			shadowParams.showExitingDiscontinuityMap = true;
+			shadowParams.showONDS = false;
+			shadowParams.showClippedONDS = false;
+			shadowParams.showSubCoord = false;
 			break;
 		case 3:
-			resetShadowParams();
-			shadowParams.SMSR = true;
-			shadowParams.showClippedONDS = true;
-			//cameraEye[0] = 14.0; cameraEye[1] = -3; cameraEye[2] = -5.5;
-			//cameraAt[0] = 14.0; cameraAt[1] = -50.0; cameraAt[2] = -3.0;
+			shadowParams.showEnteringDiscontinuityMap = false;
+			shadowParams.showExitingDiscontinuityMap = false;
+			shadowParams.showONDS = true;
+			shadowParams.showClippedONDS = false;
+			shadowParams.showSubCoord = false;
 			break;
 		case 4:
-			resetShadowParams();
-			shadowParams.SMSR = true;
+			shadowParams.showEnteringDiscontinuityMap = false;
+			shadowParams.showExitingDiscontinuityMap = false;
+			shadowParams.showONDS = false;
+			shadowParams.showClippedONDS = true;
+			shadowParams.showSubCoord = false;
+			break;
+		case 5:
+			shadowParams.showEnteringDiscontinuityMap = false;
+			shadowParams.showExitingDiscontinuityMap = false;
+			shadowParams.showONDS = false;
+			shadowParams.showClippedONDS = false;
 			shadowParams.showSubCoord = true;
 			break;
 	}
@@ -738,9 +759,12 @@ void otherFunctionsMenu(int id) {
 			shadowParams.adaptiveDepthBias = !shadowParams.adaptiveDepthBias;
 			break;
 		case 2:
-			psrOn = !psrOn;
+			shadowIntensityOn = !shadowIntensityOn;
 			break;
 		case 3:
+			psrOn = !psrOn;
+			break;
+		case 4:
 			printf("LightPosition: %f %f %f\n", sceneLoader->getLightPosition()[0] + lightTranslationVector[0], sceneLoader->getLightPosition()[1] + lightTranslationVector[1], 
 				sceneLoader->getLightPosition()[2] + lightTranslationVector[2]);
 			printf("LightPosition: %f %f %f\n", lightEye[0], lightEye[1], lightEye[2]);
@@ -779,10 +803,11 @@ void createMenu() {
 
 	shadowRevectorizationMenuID = glutCreateMenu(shadowRevectorizationMenu);
 		glutAddMenuEntry("Silhouette Revectorization", 0);
-		glutAddMenuEntry("Discontinuity Map", 1);
-		glutAddMenuEntry("Normalized Discontinuity", 2);
-		glutAddMenuEntry("Clipped Discontinuity", 3);
-		glutAddMenuEntry("Light Sub Coordinates", 4);
+		glutAddMenuEntry("Entering Discontinuity Map", 1);
+		glutAddMenuEntry("Exiting Discontinuity Map", 2);
+		glutAddMenuEntry("Normalized Discontinuity", 3);
+		glutAddMenuEntry("Clipped Discontinuity", 4);
+		glutAddMenuEntry("Light Sub Coordinates", 5);
 		
 	shadowRevectorizationBasedFilteringMenuID = glutCreateMenu(shadowRevectorizationBasedFilteringMenu);
 		glutAddMenuEntry("Percentage-Closer Filtering", 0);
@@ -798,9 +823,10 @@ void createMenu() {
 	otherFunctionsMenuID = glutCreateMenu(otherFunctionsMenu);
 		glutAddMenuEntry("Animation [On/Off]", 0);
 		glutAddMenuEntry("Adaptive Depth Bias [On/Off]", 1);
-		glutAddMenuEntry("Focus on Potential Shadow Receiver [On/Off]", 2);
-		glutAddMenuEntry("Print Data", 3);
-
+		glutAddMenuEntry("Shadow Intensity [On/Off]", 2);
+		glutAddMenuEntry("Focus on Potential Shadow Receiver [On/Off]", 3);
+		glutAddMenuEntry("Print Data", 4);
+		
 	glutCreateMenu(mainMenu);
 		glutAddMenuEntry("Shadow Mapping", 0);
 		glutAddSubMenu("Shadow Filtering", shadowFilteringMenuID);
@@ -855,6 +881,7 @@ void initGL(char *configurationFile) {
 	resetShadowParams();
 	shadowParams.naive = true;
 	shadowParams.adaptiveDepthBias = true;
+	shadowParams.shadowIntensity = 0.25;
 
 	myGLTextureViewer.loadQuad();
 	createMenu();

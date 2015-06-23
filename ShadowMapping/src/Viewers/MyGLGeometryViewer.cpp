@@ -112,6 +112,8 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glUniform1i(shadowMapWidthID, shadowParams.shadowMapWidth);
 	GLuint shadowMapHeightID = glGetUniformLocation(shaderProg, "shadowMapHeight");
 	glUniform1i(shadowMapHeightID, shadowParams.shadowMapHeight);
+	GLuint shadowIntensityID = glGetUniformLocation(shaderProg, "shadowIntensity");
+	glUniform1f(shadowIntensityID, shadowParams.shadowIntensity);
 	GLuint shadowMapBilinearID = glGetUniformLocation(shaderProg, "bilinearPCF");
 	glUniform1i(shadowMapBilinearID, shadowParams.bilinearPCF);
 	GLuint shadowMapTriCubicID = glGetUniformLocation(shaderProg, "tricubicPCF");
@@ -224,6 +226,8 @@ void MyGLGeometryViewer::configureRevectorization(ShadowParams shadowParams, int
 	glUniform1i(shadowMapHeight, shadowParams.shadowMapHeight);
 	GLuint maxSearch = glGetUniformLocation(shaderProg, "maxSearch");
 	glUniform1i(maxSearch, shadowParams.maxSearch);
+	GLuint shadowIntensityID = glGetUniformLocation(shaderProg, "shadowIntensity");
+	glUniform1f(shadowIntensityID, shadowParams.shadowIntensity);
 	GLuint lightMVPID = glGetUniformLocation(shaderProg, "lightMVP");
 	glUniformMatrix4fv(lightMVPID, 1, GL_FALSE, &shadowParams.lightMVP[0][0]);
 	GLuint inverseLightMVPID = glGetUniformLocation(shaderProg, "inverseLightMVP");
@@ -232,8 +236,10 @@ void MyGLGeometryViewer::configureRevectorization(ShadowParams shadowParams, int
 	glUniform1i(RSMSFID, shadowParams.RSMSF);
 
 	if(!computeDiscontinuity) {
-		GLuint showDiscontinuityMapID = glGetUniformLocation(shaderProg, "showDiscontinuity");
-		glUniform1i(showDiscontinuityMapID, shadowParams.showDiscontinuityMap);
+		GLuint showEnteringDiscontinuityMapID = glGetUniformLocation(shaderProg, "showEnteringDiscontinuity");
+		glUniform1i(showEnteringDiscontinuityMapID, shadowParams.showEnteringDiscontinuityMap);
+		GLuint showExitingDiscontinuityMapID = glGetUniformLocation(shaderProg, "showExitingDiscontinuity");
+		glUniform1i(showExitingDiscontinuityMapID, shadowParams.showExitingDiscontinuityMap);
 		GLuint showONDSID = glGetUniformLocation(shaderProg, "showONDS");
 		glUniform1i(showONDSID, shadowParams.showONDS);
 		GLuint showClippedONDSID = glGetUniformLocation(shaderProg, "showClippedONDS");

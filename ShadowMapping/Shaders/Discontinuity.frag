@@ -16,9 +16,9 @@ float computePreEvaluationBasedOnNormalOrientation()
 	vec3 N2 = N;
 
 	if(!gl_FrontFacing)
-		N2 *= -1;
+		N2 *= -1.0;
 
-	if(max(dot(N2,L), 0.0) == 0) 
+	if(max(dot(N2,L), 0.0) == 0.0) 
 		return 0.0;
 	else
 		return 1.0;
@@ -48,10 +48,6 @@ void main()
 			distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
 			center = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
 			isCenterUmbra = !bool(center);
-		
-			float red = 0.0;
-			float green = 0.0;
-			float blue = 0.0;
 
 			//Entering discontinuity, where the current fragment is outside the umbra and the neighbour is inside the umbra
 			//Exiting discontinuity, where the current fragment is inside the umbra and the neighbour is outside the umbra
@@ -61,8 +57,7 @@ void main()
 				distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
 				float left = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
 	
-				normalizedLightCoord.x += shadowMapStep.x;
-				normalizedLightCoord.x += shadowMapStep.x;
+				normalizedLightCoord.x += 2.0 * shadowMapStep.x;
 				distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
 				float right = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
 	
@@ -71,55 +66,22 @@ void main()
 				distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
 				float bottom = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
 	
-				normalizedLightCoord.y -= shadowMapStep.y;
-				normalizedLightCoord.y -= shadowMapStep.y;
+				normalizedLightCoord.y -= 2.0 * shadowMapStep.y;
 				distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
 				float top = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
-	
-				bool isLeftUmbra = !bool(left);
-				bool isRightUmbra = !bool(right);
-				bool isBottomUmbra = !bool(bottom);
-				bool isTopUmbra = !bool(top);
+
+				//discType = 0.0 for entering/1.0 for exiting discontinuities
+				float discType = 1.0 - center;
+				vec4 disc = abs(vec4(left - discType, right - discType, bottom - discType, top - discType) - (center - discType)) * abs(center - discType);
+				vec2 dxdy = 0.75 + (-disc.xz + disc.yw) * 0.25;
+				vec2 color = dxdy * step(vec2(1.0), vec2(dot(disc.xy, vec2(1.0)), dot(disc.zw, vec2(1.0))));
 				
-				if(!isCenterUmbra) {
-				
-					if(!isLeftUmbra && !isRightUmbra) red = 0.0;
-					if(isLeftUmbra && !isRightUmbra) red = 0.5;
-					if(isLeftUmbra && isRightUmbra) red = 0.75;
-					if(!isLeftUmbra && isRightUmbra) red = 1.0;
-					
-					if(!isBottomUmbra && !isTopUmbra) green = 0.0;
-					if(isBottomUmbra && !isTopUmbra) green = 0.5;
-					if(isBottomUmbra && isTopUmbra) green = 0.75;
-					if(!isBottomUmbra && isTopUmbra) green = 1.0;
-					
-					//vec4 disc = abs(vec4(left, right, bottom, top) - center) * center;
-					//vec2 dxdy = 0.75f + (-disc.xz + disc.yw) * 0.25f;
-					//vec2 color = dxdy * step(1.0f, float2(dot(disc.xy, 1.0f), dot(disc.zw, 1.0f)));
-					blue = 0.0;
-					gl_FragColor = vec4(red, green, blue, 1.0);
-
-				} else {
-
-					if(isLeftUmbra && isRightUmbra) red = 0.0;
-					if(!isLeftUmbra && isRightUmbra) red = 0.5;
-					if(!isLeftUmbra && !isRightUmbra) red = 0.75;
-					if(isLeftUmbra && !isRightUmbra) red = 1.0;
+				gl_FragColor = vec4(color, discType, 1.0);
 	
-					if(isBottomUmbra && isTopUmbra) green = 0.0;
-					if(!isBottomUmbra && isTopUmbra) green = 0.5;
-					if(!isBottomUmbra && !isTopUmbra) green = 0.75;
-					if(isBottomUmbra && !isTopUmbra) green = 1.0;
 
-					blue = 1.0;
-
-					gl_FragColor = vec4(red, green, blue, 1.0);
-
-				}
-			
 			} else {
 
-				gl_FragColor = vec4(red, green, blue, 1.0);
+				gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
 
 			}
 		
@@ -127,8 +89,7 @@ void main()
 
 			gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
 
-		}
-		
+		}		
 
 	}
 

@@ -11,6 +11,7 @@ typedef struct ShadowParams
 	int shadowMapWidth;
 	int shadowMapHeight;
 	int maxSearch;
+	float shadowIntensity;
 	bool tricubicPCF;
 	bool bilinearPCF;
 	bool VSM;
@@ -20,7 +21,8 @@ typedef struct ShadowParams
 	bool naive;
 	bool adaptiveDepthBias;
 	bool SMSR;
-	bool showDiscontinuityMap; //SMSR
+	bool showEnteringDiscontinuityMap; //SMSR
+	bool showExitingDiscontinuityMap; //SMSR
 	bool showONDS; //SMSR
 	bool showClippedONDS; //SMSR
 	bool showSubCoord; //SMSR

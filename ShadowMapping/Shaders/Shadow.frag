@@ -16,6 +16,7 @@ varying vec3 ln;
 uniform vec3 lightPosition;
 uniform vec3 cameraPosition;
 uniform mat4 lightMVPInv;
+uniform float shadowIntensity;
 uniform int shadowMapWidth;
 uniform int shadowMapHeight;
 uniform int bilinearPCF;
@@ -125,7 +126,7 @@ float PCF(vec3 normalizedShadowCoord)
 
 	float incrWidth = 1.0/float(shadowMapWidth);
 	float incrHeight = 1.0/float(shadowMapHeight);
-	int illuminationCount = 0;
+	float illuminationCount = 0;
 	int eachAxis = 5;
 	int numberOfSamples = eachAxis * eachAxis;
 	float offset = (float(eachAxis) - 1.0) * 0.5;
@@ -141,19 +142,19 @@ float PCF(vec3 normalizedShadowCoord)
 				distanceFromLight = textureBicubic(shadowMap, vec2(normalizedShadowCoord.s + w * incrWidth, normalizedShadowCoord.t + h * incrHeight)).z;
 			if(bilinearPCF == 1)
 				distanceFromLight = texture2D(shadowMap, vec2(normalizedShadowCoord.s + w * incrWidth, normalizedShadowCoord.t + h * incrHeight)).z;
+			
 			if(normalizedShadowCoord.z <= distanceFromLight)
 				illuminationCount++;
+			else
+				illuminationCount += shadowIntensity;
+
 			count++;
 
 		}
 	}
 
-	if(illuminationCount == 0)
-		return 0.0;
-	if(illuminationCount == numberOfSamples)
-		return 1.0;
-
 	return float(illuminationCount)/float(numberOfSamples);
+
 }
 
 float chebyshevUpperBound(vec2 moments, float distanceFromLight)
@@ -166,7 +167,7 @@ float chebyshevUpperBound(vec2 moments, float distanceFromLight)
 	float d = distanceFromLight - moments.x;
 	float p_max = variance / (variance + d*d);
 	p_max = (p_max - 0.2) / (1.0 - 0.2);
-	return clamp(p_max, 0.0, 1.0);
+	return clamp(p_max, shadowIntensity, 1.0);
 
 }
 
@@ -189,7 +190,7 @@ float exponentialShadowMapping(vec3 normalizedShadowCoord)
 	normalizedShadowCoord.z = linearize(normalizedShadowCoord.z);
 	float e1 = exp(-c * normalizedShadowCoord.z);
 	
-	return clamp(e1 * e2, 0.0, 1.0);
+	return clamp(e1 * e2, shadowIntensity, 1.0);
 
 }
 
@@ -263,9 +264,9 @@ float hamburger4MSM(vec3 normalizedShadowCoord)
 	if(z.x <= z.y)
 		return 1.0;
 	else if(z.x <= z.z)
-		return (1.0 - clamp((z.x * z.z - b.x * (z.x + z.z) + b.y)/((z.z - z.y) * (z.x - z.y)), 0.0, 1.0));
+		return clamp((1.0 - clamp((z.x * z.z - b.x * (z.x + z.z) + b.y)/((z.z - z.y) * (z.x - z.y)), 0.0, 1.0)), shadowIntensity, 1.0);
 	else 
-		return (1.0 - clamp(1.0 - (z.y * z.z - b.x * (z.y + z.z) + b.y)/((z.x - z.y) * (z.x - z.z)), 0.0, 1.0));
+		return clamp((1.0 - clamp(1.0 - (z.y * z.z - b.x * (z.y + z.z) + b.y)/((z.x - z.y) * (z.x - z.z)), 0.0, 1.0)), shadowIntensity, 1.0);
 	
 }
 
@@ -322,7 +323,7 @@ float computePreEvaluationBasedOnNormalOrientation()
 		N2 *= -1;
 
 	if(max(dot(N2,L), 0.0) == 0) 
-		return 0.0;
+		return shadowIntensity;
 	else
 		return 1.0;
 
@@ -343,7 +344,7 @@ void main()
 
 		if(naive == 1) {
 			float distanceFromLight = texture2D(shadowMap, vec2(normalizedShadowCoord.st)).z;		
-			shadow = (normalizedShadowCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
+			shadow = (normalizedShadowCoord.z <= distanceFromLight) ? 1.0 : shadowIntensity; 
 		} else if(VSM == 1)
 			shadow = varianceShadowMapping(normalizedShadowCoord.xyz);
 		else if(ESM == 1)
