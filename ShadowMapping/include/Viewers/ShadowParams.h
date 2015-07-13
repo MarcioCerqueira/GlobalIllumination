@@ -10,7 +10,8 @@ typedef struct ShadowParams
 	glm::mat4 lightP;
 	int shadowMapWidth;
 	int shadowMapHeight;
-	int maxSearch;
+	int maxSearch; //SMSR
+	float depthThreshold; //SMSR
 	float shadowIntensity;
 	bool tricubicPCF;
 	bool bilinearPCF;
@@ -26,9 +27,9 @@ typedef struct ShadowParams
 	bool showONDS; //SMSR
 	bool showClippedONDS; //SMSR
 	bool showSubCoord; //SMSR
-	bool RPCF; //SMSR
-	bool RSMSF; //SMSR
-	bool RPCFSubCoordAccuracy; //SMSR
+	bool RPCFPlusSMSR; //SMSR
+	bool RSMSS; //SMSR
+	bool RPCFPlusRSMSS; //SMSR
 	GLuint shadowMap;
 	GLuint discontinuityMap; //SMSR
 } ShadowParams;

@@ -127,7 +127,7 @@ float PCF(vec3 normalizedShadowCoord)
 	float incrWidth = 1.0/float(shadowMapWidth);
 	float incrHeight = 1.0/float(shadowMapHeight);
 	float illuminationCount = 0;
-	int eachAxis = 5;
+	int eachAxis = 3;
 	int numberOfSamples = eachAxis * eachAxis;
 	float offset = (float(eachAxis) - 1.0) * 0.5;
 	float distanceFromLight;
@@ -183,7 +183,7 @@ float varianceShadowMapping(vec3 normalizedShadowCoord)
 float exponentialShadowMapping(vec3 normalizedShadowCoord)
 {
 
-	float c = 300.0;
+	float c = 60.0;
 	float e2 = texture2D(shadowMap, vec2(normalizedShadowCoord.st)).x;
 	e2 = exp(c * e2);
 
@@ -198,22 +198,17 @@ float exponentialShadowMapping(vec3 normalizedShadowCoord)
 float exponentialVarianceShadowMapping(vec3 normalizedShadowCoord)
 {
 
-	float c = 150.0;
+	normalizedShadowCoord.z = linearize(normalizedShadowCoord.z);
 	
-	float positiveMoment1 = exp(c * texture2D(shadowMap, vec2(normalizedShadowCoord.st)).x);
-	float positiveMoment2 = exp(c * texture2D(shadowMap, vec2(normalizedShadowCoord.st)).y);
-	float negativeMoment1 = -exp(-c * texture2D(shadowMap, vec2(normalizedShadowCoord.st)).z);
-	float negativeMoment2 = -exp(-c * texture2D(shadowMap, vec2(normalizedShadowCoord.st)).w);
+	vec2 moments = texture2D(shadowMap, vec2(normalizedShadowCoord.st)).xy;
+	float variance = chebyshevUpperBound(moments, normalizedShadowCoord.z);
 
-	float positiveDistanceFromLight = linearize(normalizedShadowCoord.z);
+	float c = 60.0;
+	float e1 = exp(-c * normalizedShadowCoord.z);
+	float e2 = exp(c * texture2D(shadowMap, vec2(normalizedShadowCoord.st)).z);
+	float exponential = clamp(e1 * e2, shadowIntensity, 1.0);
 	
-	float positiveDistanceFromLightMoment1 = exp(c * positiveDistanceFromLight);
-	float negativeDistanceFromLightMoment1 = -exp(-c * positiveDistanceFromLight);
-
-	float pos = chebyshevUpperBound(vec2(positiveMoment1, positiveMoment2), positiveDistanceFromLightMoment1);
-	float neg = chebyshevUpperBound(vec2(negativeMoment1, negativeMoment2), negativeDistanceFromLightMoment1);
-
-	return min(pos, neg);
+	return min(variance, exponential);
 
 }
 
@@ -223,12 +218,6 @@ float hamburger4MSM(vec3 normalizedShadowCoord)
 	vec3 z, c, d;
 	vec4 b = texture2D(shadowMap, vec2(normalizedShadowCoord.st));
 	b = mQuantizationInverse * (b - tQuantization);
-	
-	//Hack
-	b.y = b.x * b.x;
-	b.z = b.x * b.x * b.x;
-	b.w = b.x * b.x * b.x * b.x;
-
 	float bias = 0.00003;
 	
 	z.x = linearize(normalizedShadowCoord.z);

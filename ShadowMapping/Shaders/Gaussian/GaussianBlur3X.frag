@@ -10,7 +10,7 @@ vec4 blur(vec2 step, vec2 center)
 	sum += texture2D(image, vec2(center.s - 1.0 * step.s, center.t)) * 0.25;
 	sum += texture2D(image, vec2(center.s, center.t)) * 0.5;
 	sum += texture2D(image, vec2(center.s + 1.0 * step.s, center.t)) * 0.25;
-
+	
 	return sum;
 	
 }

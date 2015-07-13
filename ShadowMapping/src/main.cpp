@@ -56,7 +56,8 @@ enum
 	EXPONENTIAL_SHADER = 8,
 	EXPONENTIAL_MOMENT_SHADER = 9,
 	DISCONTINUITY_SHADER = 10,
-	REVECTORIZATION_SHADER = 11
+	SMSR_SHADER = 11,
+	RSMSS_SHADER = 12
 };
 
 bool temp = false;
@@ -120,12 +121,12 @@ bool psrOn = false;
 bool animationOn = false;
 bool cameraOn = false;
 bool shadowIntensityOn = false;
-
+bool stop = false;
 int vel = 1;
 //+900 
 //-150
 float animation = -1800;
-	
+
 float xmin, xmax, ymin, ymax;
 
 void calculateFPS()
@@ -292,7 +293,7 @@ void renderSMSR(bool computeDiscontinuity)
 	glViewport(0, 0, windowWidth, windowHeight);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	
-	if(computeDiscontinuity || shadowParams.RPCF || shadowParams.RPCFSubCoordAccuracy) {
+	if(computeDiscontinuity || shadowParams.RPCFPlusSMSR || shadowParams.RPCFPlusRSMSS) {
 		updateLight();
 		lightEye = glm::mat3(glm::rotate((float)180.0, glm::vec3(0, 1, 0))) * lightEye;
 	}
@@ -300,9 +301,12 @@ void renderSMSR(bool computeDiscontinuity)
 	if(computeDiscontinuity) {
 		glUseProgram(shaderProg[DISCONTINUITY_SHADER]);
 		myGLGeometryViewer.setShaderProg(shaderProg[DISCONTINUITY_SHADER]);
-	} else if(shadowParams.SMSR || shadowParams.RPCF || shadowParams.RSMSF || shadowParams.RPCFSubCoordAccuracy){
-		glUseProgram(shaderProg[REVECTORIZATION_SHADER]);
-		myGLGeometryViewer.setShaderProg(shaderProg[REVECTORIZATION_SHADER]);
+	} else if(shadowParams.SMSR || shadowParams.RPCFPlusSMSR){
+		glUseProgram(shaderProg[SMSR_SHADER]);
+		myGLGeometryViewer.setShaderProg(shaderProg[SMSR_SHADER]);
+	} else if(shadowParams.RSMSS || shadowParams.RPCFPlusRSMSS) {
+		glUseProgram(shaderProg[RSMSS_SHADER]);
+		myGLGeometryViewer.setShaderProg(shaderProg[RSMSS_SHADER]);
 	}
 
 	shadowParams.shadowMap = textures[SHADOW_MAP_DEPTH];
@@ -383,7 +387,7 @@ void display()
 		glBindFramebuffer(GL_FRAMEBUFFER, gaussianXFrameBuffer);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glViewport(0, 0, windowWidth, windowHeight);
-		if(shadowParams.VSM || shadowParams.MSM)
+		if(shadowParams.VSM || shadowParams.MSM || shadowParams.EVSM)
 			myGLTextureViewer.setShaderProg(shaderProg[GAUSSIAN_X_SHADER]);
 		else
 			myGLTextureViewer.setShaderProg(shaderProg[LOG_GAUSSIAN_X_SHADER]);
@@ -393,7 +397,7 @@ void display()
 		glBindFramebuffer(GL_FRAMEBUFFER, gaussianYFrameBuffer);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glViewport(0, 0, windowWidth, windowHeight);
-		if(shadowParams.VSM || shadowParams.MSM)
+		if(shadowParams.VSM || shadowParams.MSM || shadowParams.EVSM)
 			myGLTextureViewer.setShaderProg(shaderProg[GAUSSIAN_Y_SHADER]);
 		else
 			myGLTextureViewer.setShaderProg(shaderProg[LOG_GAUSSIAN_Y_SHADER]);
@@ -409,9 +413,9 @@ void display()
 	glDisable(GL_CULL_FACE);
 	glDisable(GL_POLYGON_OFFSET_FILL);
 	
-	if(shadowParams.SMSR || shadowParams.RPCF || shadowParams.RSMSF || shadowParams.RPCFSubCoordAccuracy) {
+	if(shadowParams.SMSR || shadowParams.RPCFPlusSMSR || shadowParams.RSMSS || shadowParams.RPCFPlusRSMSS) {
 		
-		if(shadowParams.SMSR || shadowParams.RSMSF) {
+		if(shadowParams.SMSR || shadowParams.RSMSS) {
 		
 			glBindFramebuffer(GL_FRAMEBUFFER, discontinuityFrameBuffer);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -441,7 +445,8 @@ void idle()
 	calculateFPS();
 
 	if(animationOn) {
-		animation += 6;
+		if(!stop)
+			animation += 6;
 		if(animation == 1800)
 			animation = -1800;
 	}
@@ -464,9 +469,9 @@ void resetShadowParams()
 	shadowParams.showONDS = false;
 	shadowParams.showClippedONDS = false;
 	shadowParams.showSubCoord = false;	
-	shadowParams.RPCF = false;
-	shadowParams.RPCFSubCoordAccuracy = false;
-	shadowParams.RSMSF = false;
+	shadowParams.RPCFPlusSMSR = false;
+	shadowParams.RPCFPlusRSMSS = false;
+	shadowParams.RSMSS = false;
 
 }
 
@@ -646,23 +651,26 @@ void shadowRevectorizationBasedFilteringMenu(int id) {
 	{
 		case 0:
 			resetShadowParams();
-			shadowParams.RPCF = true;
+			shadowParams.RPCFPlusSMSR = true;
 			//TODO
 			//cameraEye[0] = -17.0; cameraEye[1] = 3.1; cameraEye[2] = -6.5;
 			//cameraAt[0] = -17.0; cameraAt[1] = -44.0; cameraAt[2] = -4.0;
 			break;
 		case 1:
 			resetShadowParams();
-			shadowParams.RPCFSubCoordAccuracy = true;
+			shadowParams.RPCFPlusRSMSS = true;
 			break;
 		case 2:
 			resetShadowParams();
-			shadowParams.RSMSF = true;
-			//TODO
-			//cameraEye[0] = 1.0; cameraEye[1] = -6.0; cameraEye[2] = 8.0;
-			//cameraAt[0] = 1.0; cameraAt[1] = -31.0; cameraAt[2] = 48.0;
-			//cameraEye[0] = -2.0; cameraEye[1] = -5.0; cameraEye[2] = -36.0;
-			//cameraAt[0] = -2.0; cameraAt[1] = -30.0; cameraAt[2] = 4.0;
+			shadowParams.RSMSS = true;
+			//special case
+			//cameraEye[0] = -4.0; cameraEye[1] = -3.0; cameraEye[2] = -25.0;
+			//cameraAt[0] = -4.0; cameraAt[1] = -28.0; cameraAt[2] = 15.0;
+			//cameraEye[0] = 21.0; cameraEye[1] = -5.0; cameraEye[2] = -3.0;
+			//cameraAt[0] = 21.0; cameraAt[1] = -30.0; cameraAt[2] = 37.0;
+			//adaptive threshold
+			//cameraEye[0] = 3.0; cameraEye[1] = -1.22; cameraEye[2] = -7.6;
+			//cameraAt[0] = 3.0; cameraAt[1] = -47.0; cameraAt[2] = 3.0;
 			
 			break;
 	}
@@ -752,8 +760,16 @@ void otherFunctionsMenu(int id) {
 	switch(id)
 	{
 		case 0:
+				
+			if(animationOn) {
+				stop = true;
+				std::cout << animation << std::endl;
+			} else
+				animationOn = !animationOn;
+			/*
 			animationOn = !animationOn;
 			animation = 0;
+			*/
 			break;
 		case 1:
 			shadowParams.adaptiveDepthBias = !shadowParams.adaptiveDepthBias;
@@ -878,6 +894,7 @@ void initGL(char *configurationFile) {
 	shadowParams.shadowMapWidth = shadowMapWidth;
 	shadowParams.shadowMapHeight = shadowMapHeight;
 	shadowParams.maxSearch = 256;
+	shadowParams.depthThreshold = 0.000025;
 	resetShadowParams();
 	shadowParams.naive = true;
 	shadowParams.adaptiveDepthBias = true;
@@ -968,7 +985,8 @@ int main(int argc, char **argv) {
 	initShader("Shaders/LogGaussian/LogGaussianBlur3X", LOG_GAUSSIAN_X_SHADER);
 	initShader("Shaders/LogGaussian/LogGaussianBlur3Y", LOG_GAUSSIAN_Y_SHADER);
 	initShader("Shaders/Discontinuity", DISCONTINUITY_SHADER);
-	initShader("Shaders/Revectorization", REVECTORIZATION_SHADER);
+	initShader("Shaders/SMSR", SMSR_SHADER);
+	initShader("Shaders/RSMSS", RSMSS_SHADER);
 	glUseProgram(0);
 
 	glutMainLoop();

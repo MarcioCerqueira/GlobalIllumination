@@ -17,18 +17,15 @@ void main()
 	float depth = position.z / position.w;
 	depth = depth * 0.5 + 0.5;
 	depth = linearize(depth);
+
+	vec2 moment;
+	moment.x = depth;
+	moment.y = depth * depth;
 	
-	float exponential = depth;
-	float negativeExponential = depth;
-
-	float dx = dFdx(exponential);
-	float dy = dFdy(exponential);
-	float positiveOffset = 0.25 * (dx*dx+dy*dy);
-
-	dx = dFdx(negativeExponential);
-	dy = dFdy(negativeExponential);
-	float negativeOffset = 0.25 * (dx*dx+dy*dy);
-
-	gl_FragColor = vec4(exponential, exponential * exponential + positiveOffset, negativeExponential, negativeExponential * negativeExponential + negativeOffset);
+	float dx = dFdx(depth);
+	float dy = dFdy(depth);
+	moment.y += 0.25 * (dx*dx+dy*dy);
+	
+	gl_FragColor = vec4(moment.x, moment.y, depth, 1.0);
 
 }

@@ -144,13 +144,20 @@ void MyGLGeometryViewer::configureMoments(ShadowParams shadowParams)
 {
 
 	glm::mat4 mQuantization, mQuantizationInverse;
+	/*
 	mQuantization[0][0] = -2.07224649;	mQuantization[0][1] = 32.2370378;	mQuantization[0][2] = -68.5710746;	mQuantization[0][3] = 39.3703274;
 	mQuantization[1][0] = 13.7948857;	mQuantization[1][1] = -59.4683976;	mQuantization[1][2] = 82.035975;	mQuantization[1][3] = -35.3649032;
 	mQuantization[2][0] = 0.105877704;	mQuantization[2][1] = -1.90774663;	mQuantization[2][2] = 9.34965551;	mQuantization[2][3] = -6.65434907;
 	mQuantization[3][0] = 9.79240621;	mQuantization[3][1] = -33.76521106;	mQuantization[3][2] = 47.9456097;	mQuantization[3][3] = -23.9728048;
+	*/
+	mQuantization[0][0] = 4;	mQuantization[0][1] = 0;	mQuantization[0][2] = 0;	mQuantization[0][3] = 0;
+	mQuantization[1][0] = 4;	mQuantization[1][1] = 4;	mQuantization[1][2] = 0;	mQuantization[1][3] = 0;
+	mQuantization[2][0] = 4;	mQuantization[2][1] = 0;	mQuantization[2][2] = 4;	mQuantization[2][3] = 0;
+	mQuantization[3][0] = 4;	mQuantization[3][1] = 0;	mQuantization[3][2] = 0;	mQuantization[3][3] = 4;
+	
 	mQuantization = glm::transpose(mQuantization);
 	mQuantizationInverse = glm::inverse(mQuantization);
-
+	
 	GLuint shadowMapVSMID = glGetUniformLocation(shaderProg, "VSM");
 	glUniform1i(shadowMapVSMID, shadowParams.VSM);
 	GLuint shadowMapMSMID = glGetUniformLocation(shaderProg, "MSM");
@@ -224,16 +231,20 @@ void MyGLGeometryViewer::configureRevectorization(ShadowParams shadowParams, int
 	glUniform1i(shadowMapWidth, shadowParams.shadowMapWidth);
 	GLuint shadowMapHeight = glGetUniformLocation(shaderProg, "shadowMapHeight");
 	glUniform1i(shadowMapHeight, shadowParams.shadowMapHeight);
+	GLuint shadowMapStep = glGetUniformLocation(shaderProg, "shadowMapStep");
+	glUniform2f(shadowMapStep, 1.0/shadowParams.shadowMapWidth, 1.0/shadowParams.shadowMapHeight);
 	GLuint maxSearch = glGetUniformLocation(shaderProg, "maxSearch");
 	glUniform1i(maxSearch, shadowParams.maxSearch);
+	GLuint depthThreshold = glGetUniformLocation(shaderProg, "depthThreshold");
+	glUniform1f(depthThreshold, shadowParams.depthThreshold);
 	GLuint shadowIntensityID = glGetUniformLocation(shaderProg, "shadowIntensity");
 	glUniform1f(shadowIntensityID, shadowParams.shadowIntensity);
 	GLuint lightMVPID = glGetUniformLocation(shaderProg, "lightMVP");
 	glUniformMatrix4fv(lightMVPID, 1, GL_FALSE, &shadowParams.lightMVP[0][0]);
 	GLuint inverseLightMVPID = glGetUniformLocation(shaderProg, "inverseLightMVP");
 	glUniformMatrix4fv(inverseLightMVPID, 1, GL_FALSE, &inverseMVP[0][0]);
-	GLuint RSMSFID = glGetUniformLocation(shaderProg, "RSMSF");
-	glUniform1i(RSMSFID, shadowParams.RSMSF);
+	GLuint RSMSSID = glGetUniformLocation(shaderProg, "RSMSS");
+	glUniform1i(RSMSSID, shadowParams.RSMSS);
 
 	if(!computeDiscontinuity) {
 		GLuint showEnteringDiscontinuityMapID = glGetUniformLocation(shaderProg, "showEnteringDiscontinuity");
@@ -250,10 +261,10 @@ void MyGLGeometryViewer::configureRevectorization(ShadowParams shadowParams, int
 		glUniform1i(discontinuityID, 7);
 		GLuint SMSRID = glGetUniformLocation(shaderProg, "SMSR");
 		glUniform1i(SMSRID, shadowParams.SMSR);
-		GLuint RPCFID = glGetUniformLocation(shaderProg, "RPCF");
-		glUniform1i(RPCFID, shadowParams.RPCF);
-		GLuint RPCFSubCoordID = glGetUniformLocation(shaderProg, "RPCFSubCoordAccuracy");
-		glUniform1i(RPCFSubCoordID, shadowParams.RPCFSubCoordAccuracy);
+		GLuint RPCFID = glGetUniformLocation(shaderProg, "RPCFPlusSMSR");
+		glUniform1i(RPCFID, shadowParams.RPCFPlusSMSR);
+		GLuint RPCFSubCoordID = glGetUniformLocation(shaderProg, "RPCFPlusRSMSS");
+		glUniform1i(RPCFSubCoordID, shadowParams.RPCFPlusRSMSS);
 	}
 
 	GLuint shadowID = glGetUniformLocation(shaderProg, "shadowMap");
