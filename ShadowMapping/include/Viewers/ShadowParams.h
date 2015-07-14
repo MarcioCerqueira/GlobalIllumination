@@ -31,7 +31,6 @@ typedef struct ShadowParams
 	bool RSMSS; //SMSR
 	bool RPCFPlusRSMSS; //SMSR
 	GLuint shadowMap;
-	GLuint discontinuityMap; //SMSR
 } ShadowParams;
 
 #endif

@@ -1,4 +1,3 @@
-uniform sampler2D discontinuityMap;
 uniform sampler2D shadowMap;
 uniform sampler2D meshTexturedColor;
 varying vec4 shadowCoord;
@@ -72,6 +71,39 @@ vec4 phong()
 	  sceneColor = gl_FrontLightModelProduct.sceneColor;
    
    return sceneColor + Iamb + Idiff + Ispec;  
+
+}
+
+vec4 getDisc(vec4 normalizedLightCoord, vec2 shadowMapStep, float distanceFromLight, bool breakForUmbra, bool breakForNoUmbra) 
+{
+
+	vec4 dir = vec4(0.0, 0.0, 0.0, 0.0);
+	//x = left; y = right; z = bottom; w = top
+	if(breakForNoUmbra)
+		dir = vec4(1.0, 1.0, 1.0, 1.0);
+
+	normalizedLightCoord.x -= shadowMapStep.x;
+	distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
+	dir.x = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
+	if((breakForUmbra && dir.x == 1.0) || (breakForNoUmbra && dir.x == 0.0)) return dir;
+
+	normalizedLightCoord.x += 2.0 * shadowMapStep.x;
+	distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
+	dir.y = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
+	if((breakForUmbra && dir.y == 1.0) || (breakForNoUmbra && dir.y == 0.0)) return dir;
+	
+	normalizedLightCoord.x -= shadowMapStep.x;
+	normalizedLightCoord.y += shadowMapStep.y;
+	distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
+	dir.z = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
+	if((breakForUmbra && dir.z == 1.0) || (breakForNoUmbra && dir.z == 0.0)) return dir;
+
+	normalizedLightCoord.y -= 2.0 * shadowMapStep.y;
+	distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
+	dir.w = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
+	if((breakForUmbra && dir.w == 1.0) || (breakForNoUmbra && dir.w == 0.0)) return dir;
+
+	return dir;
 
 }
 
@@ -232,6 +264,7 @@ float computeDiscontinuityLength(vec4 inputDiscontinuity, vec4 lightCoord, vec2 
 				hasDisc = getDisc(centeredLightCoord, vec2(0.0, 0.0), 0.0);
 				if(!hasDisc) break;
 			}
+
 			foundEdgeEnd = 1.0;
 			break;
 		
@@ -325,7 +358,7 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 	//If the exiting discontinuity is in all the four directions, do not clip the ONDS
 	if(discontinuity.r == 0.75 && discontinuity.g == 0.75 && discontinuity.b == 1.0)
 		return 1.0;
-
+	
 	//If positive entering discontinuity on both directions and the discontinuity is in both sides of an axis
 	if(normalizedDiscontinuity.x <= -2.0 && normalizedDiscontinuity.y <= -2.0 && (discontinuity.r == 0.75 || discontinuity.g == 0.75) && discontinuity.b == 0.0) {
 
@@ -352,7 +385,8 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 				
 				//According to the y-axis discontinuity, determine x-axis discontinuity
 				lightCoord.y += mix(-shadowMapStep.y, shadowMapStep.y, step(1.0, float(top)));
-				left = getDisc(lightCoord, vec2(0.0, 0.0), vec4(0.5, 0.0, 0.0, 0.0));
+				left = getDisc(lightCoord, vec2(0.0, 1.0), vec4(0.5, 0.0, 0.0, 0.0));
+				
 				right = !left;
 				
 			} else {
@@ -363,8 +397,9 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 					bottom = false;
 				
 				lightCoord.y += ((discontinuity.g - 0.75) * 4.0) * shadowMapStep.y;
-				left = getDisc(lightCoord, vec2(0.0, 0.0), vec4(0.5, 0.0, 0.0, discontinuity.b));
-				right = getDisc(lightCoord, vec2(0.0, 0.0), vec4(1.0, 0.0, 0.0, discontinuity.b));
+
+				left = getDisc(lightCoord, vec2(0.0, 1.0), vec4(0.5, 0.0, 0.0, discontinuity.b));
+				right = getDisc(lightCoord, vec2(0.0, 1.0), vec4(1.0, 0.0, 0.0, discontinuity.b));
 				
 				//If the dual discontinuity (i.e. left-right) persists in the next neighbour, check the exiting neighbours
 				if(left && right) {
@@ -376,31 +411,6 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 					float b = clamp((1.0 - subCoord.x) - (normalizedDiscontinuity.y - 1.0), 0.0, 1.0);
 					float c = mix(1.0 - subCoord.y, subCoord.y, step(discontinuity.g, 1.0));
 					return min(min(a, b), c);
-
-					/*
-					lightCoord.y -= ((discontinuity.g - 0.75) * 4.0) * shadowMapStep.y;
-					
-					lightCoord.x -= shadowMapStep.x;
-					left = getDisc(lightCoord, vec2(1.0, 0.0), 1.0);
-					lightCoord.x += 2 * shadowMapStep.x;
-					right = getDisc(lightCoord, vec2(1.0, 0.0), 1.0);
-				
-					if(left && right) return 0.0;
-
-					left = !left;
-					right = !right;
-
-					normalizedDiscontinuity.y = decompressPositiveDiscontinuity(normalizedDiscontinuity.y);
-
-					if(!left && !bottom)
-						return min(clamp(1.0 - ((normalizedDiscontinuity.y) - (subCoord.x)), 0.0, 1.0), clamp(((1.0 - subCoord.x) - (1.0 - normalizedDiscontinuity.y)) + 1.0, 0.0, 1.0));
-					else if(!right && !bottom) 
-						return 0.0;//clamp(subCoord.x - (1.0 - subCoord.y), 0.0, 1.0);
-					else if(!left && !top)
-						return 0.0;//clamp((1.0 - subCoord.y) - subCoord.x, 0.0, 1.0);
-					else if(!right && !top)
-						return min(clamp(((1.0 - subCoord.x) - (normalizedDiscontinuity.y)) + 1.0, 0.0, 1.0), clamp(1.0 - ((1.0 - normalizedDiscontinuity.y) - (subCoord.x)), 0.0, 1.0));
-					*/
 
 				}
 			
@@ -424,7 +434,8 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 
 				//According to the x-axis discontinuity, determine y-axis discontinuity
 				lightCoord.x += mix(shadowMapStep.x, -shadowMapStep.x, step(1.0, float(left)));
-				bottom = getDisc(lightCoord, vec2(0.0, 0.0), vec4(0.5, 0.0, 0.0, discontinuity.b));
+				
+				bottom = getDisc(lightCoord, vec2(0.0, 1.0), vec4(0.5, 0.0, 0.0, discontinuity.b));
 				top = !bottom;
 
 			} else {
@@ -435,8 +446,9 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 					left = false;
 				
 				lightCoord.x -= ((discontinuity.r - 0.75) * 4.0) * shadowMapStep.x;
-				bottom = getDisc(lightCoord, vec2(0.0, 0.0), vec4(0.0, 0.5, 0.0, discontinuity.b));
-				top = getDisc(lightCoord, vec2(0.0, 0.0), vec4(0.0, 1.0, 0.0, discontinuity.b));
+				
+				bottom = getDisc(lightCoord, vec2(1.0, 0.0), vec4(0.0, 0.5, 0.0, discontinuity.b));
+				top = getDisc(lightCoord, vec2(1.0, 0.0), vec4(0.0, 1.0, 0.0, discontinuity.b));
 
 				//If the dual discontinuity (i.e. top-bottom) persists in the next neighbour, clip all the ONDS
 				if(bottom && top) {
@@ -465,21 +477,23 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 			return clamp((1.0 - subCoord.y) - (1.0 - subCoord.x), 0.0, 1.0);
 
 	}
-
+	
 	//If entering left and right discontinuity
 	if(discontinuity.r == 0.75 && discontinuity.g != 0.0 && discontinuity.b == 0.0) {
 		
 		//These booleans indicate where there is umbra
 		bool left = true;
 		bool right = true;
+		float distanceFromLight; 
 
 		//While umbra in all directions
 		while(left && right) {
 		
 			lightCoord.y += ((discontinuity.g - 0.75) * 4.0) * shadowMapStep.y;
-			left = getDisc(lightCoord, vec2(0.0, 0.0), vec4(0.5, 0.0, 0.0, discontinuity.b));
-			right = getDisc(lightCoord, vec2(0.0, 0.0), vec4(1.0, 0.0, 0.0, discontinuity.b));
-		
+			
+			left = getDisc(lightCoord, vec2(0.0, 1.0), vec4(0.5, 0.0, 0.0, discontinuity.b));
+			right = getDisc(lightCoord, vec2(0.0, 1.0), vec4(1.0, 0.0, 0.0, discontinuity.b));
+			
 		}
 
 		//If there is no umbra in the left or right..
@@ -510,6 +524,8 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 		vec4 topLightCoord = lightCoord;
 		vec4 bottomLightCoord = lightCoord;
 
+		float distanceFromLight;
+
 		//While umbra in all directions
 		while(topLeft && topRight && bottomLeft && bottomRight && (!topCenter || !bottomCenter)) {
 	
@@ -519,8 +535,8 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 				float center = (topLightCoord.z <= texture2D(shadowMap, topLightCoord.xy).z) ? 1.0 : 0.0; 
 				topCenter = !bool(center);
 					
-				topLeft = getDisc(topLightCoord, vec2(0.0, 0.0), vec4(0.5, 0.0, 0.0, discontinuity.b));
-				topRight = getDisc(topLightCoord, vec2(0.0, 0.0), vec4(1.0, 0.0, 0.0, discontinuity.b));
+				topLeft = getDisc(topLightCoord, vec2(0.0, 1.0), vec4(0.5, 0.0, 0.0, discontinuity.b));
+				topRight = getDisc(topLightCoord, vec2(0.0, 1.0), vec4(1.0, 0.0, 0.0, discontinuity.b));
 				
 			}
 
@@ -530,8 +546,8 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 				float center = (bottomLightCoord.z <= texture2D(shadowMap, bottomLightCoord.xy).z) ? 1.0 : 0.0; 
 				bottomCenter = !bool(center);
 				
-				bottomLeft = getDisc(bottomLightCoord, vec2(0.0, 0.0), vec4(0.5, 0.0, 0.0, discontinuity.b));
-				bottomRight = getDisc(bottomLightCoord, vec2(0.0, 0.0), vec4(1.0, 0.0, 0.0, discontinuity.b));
+				bottomLeft = getDisc(bottomLightCoord, vec2(0.0, 1.0), vec4(0.5, 0.0, 0.0, discontinuity.b));
+				bottomRight = getDisc(bottomLightCoord, vec2(0.0, 1.0), vec4(1.0, 0.0, 0.0, discontinuity.b));
 				
 			}
 
@@ -581,13 +597,14 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 		//These booleans indicate where there is umbra
 		bool bottom = true;
 		bool top = true;
-	
+		float distanceFromLight;
+
 		//While umbra in all directions
 		while(bottom && top) {	
 		
 			lightCoord.x -= ((discontinuity.r - 0.75) * 4.0) * shadowMapStep.x;
-			bottom = getDisc(lightCoord, vec2(0.0, 0.0), vec4(0.0, 0.5, 0.0, discontinuity.b));
-			top = getDisc(lightCoord, vec2(0.0, 0.0), vec4(0.0, 1.0, 0.0, discontinuity.b));
+			bottom = getDisc(lightCoord, vec2(1.0, 0.0), vec4(0.0, 0.5, 0.0, discontinuity.b));
+			top = getDisc(lightCoord, vec2(1.0, 0.0), vec4(0.0, 1.0, 0.0, discontinuity.b));
 		
 		}
 		
@@ -616,7 +633,7 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 		//These booleans help us to find the discontinuity end
 		bool leftCenter = false;
 		bool rightCenter = false;
-		float center;
+		float center, distanceFromLight;
 
 		vec4 leftLightCoord = lightCoord;
 		vec4 rightLightCoord = lightCoord;
@@ -630,9 +647,9 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 				center = (rightLightCoord.z <= texture2D(shadowMap, rightLightCoord.xy).z) ? 1.0 : 0.0; 
 				rightCenter = !bool(center);
 			
-				bottomRight = getDisc(rightLightCoord, vec2(0.0, 0.0), vec4(0.0, 0.5, 0.0, discontinuity.b));
-				topRight = getDisc(rightLightCoord, vec2(0.0, 0.0), vec4(0.0, 1.0, 0.0, discontinuity.b));
-					
+				bottomRight = getDisc(rightLightCoord, vec2(1.0, 0.0), vec4(0.0, 0.5, 0.0, discontinuity.b));
+				topRight = getDisc(rightLightCoord, vec2(1.0, 0.0), vec4(0.0, 1.0, 0.0, discontinuity.b));
+
 			}
 		
 			if(!leftCenter) {
@@ -641,8 +658,8 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 				center = (leftLightCoord.z <= texture2D(shadowMap, leftLightCoord.xy).z) ? 1.0 : 0.0; 
 				leftCenter = !bool(center);
 			
-				bottomLeft = getDisc(leftLightCoord, vec2(0.0, 0.0), vec4(0.0, 0.5, 0.0, discontinuity.b));
-				topLeft = getDisc(leftLightCoord, vec2(0.0, 0.0), vec4(0.0, 1.0, 0.0, discontinuity.b));
+				bottomLeft = getDisc(leftLightCoord, vec2(1.0, 0.0), vec4(0.0, 0.5, 0.0, discontinuity.b));
+				topLeft = getDisc(leftLightCoord, vec2(1.0, 0.0), vec4(0.0, 1.0, 0.0, discontinuity.b));
 				
 			}
 
@@ -685,18 +702,18 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 			return clamp((1.0 - subCoord.y) - (normalizedDiscontinuity.x - 1.0), 0.0, 1.0);
 
 	}
-
+	
 	//If exiting left and right discontinuity only
 	if(discontinuity.r == 0.75 && discontinuity.g == 0.0 && discontinuity.b == 1.0) {
 		
 		return 0.0;
 		vec4 referenceCoord = lightCoord;
 		referenceCoord.x = lightCoord.x - shadowMapStep.x;
-		bool left = getDisc(lightCoord, vec2(0.0, 0.0), vec4(0.5, 0.0, 0.0, discontinuity.b));
+		bool left = getDisc(referenceCoord, vec2(0.0, 1.0), vec4(0.5, 0.0, 0.0, discontinuity.b));
 		referenceCoord.x = lightCoord.x + shadowMapStep.x;
-		bool right = getDisc(lightCoord, vec2(0.0, 0.0), vec4(1.0, 0.0, 0.0, discontinuity.b));
+		bool right = getDisc(referenceCoord, vec2(0.0, 1.0), vec4(1.0, 0.0, 0.0, discontinuity.b));
 		
-		float a = 0, b = 0;
+		float a = 0.0, b = 0.0;
 		
 		//If there is umbra on left and right
 		if(left && right) {
@@ -717,8 +734,8 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 
 				mult = (count / 2) + 1;
 
-				if(mod(float(count), 2.0) == 0) referenceCoord.y = lightCoord.y + mult * shadowMapStep.y;
-				else referenceCoord.y = lightCoord.y - mult * shadowMapStep.y;
+				if(mod(float(count), 2.0) == 0.0) referenceCoord.y = lightCoord.y + float(mult) * shadowMapStep.y;
+				else referenceCoord.y = lightCoord.y - float(mult) * shadowMapStep.y;
 
 				referenceCoord.x = lightCoord.x - shadowMapStep.x;
 				left = getDisc(referenceCoord, vec2(1.0, 0.0), 0.0);
@@ -750,10 +767,11 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 		
 		//Scan exiting discontinuity in the opposite y-axis direction
 		lightCoord.y += ((discontinuity.g - 0.75) * 4.0) * shadowMapStep.y;
-		bool left = getDisc(lightCoord, vec2(0.0, 0.0), vec4(0.5, 0.0, 0.0, discontinuity.b));
-		bool right = getDisc(lightCoord, vec2(0.0, 0.0), vec4(1.0, 0.0, 0.0, discontinuity.b));
+
+		bool left = getDisc(lightCoord, vec2(0.0, 1.0), vec4(0.5, 0.0, 0.0, discontinuity.b));
+		bool right = getDisc(lightCoord, vec2(0.0, 1.0), vec4(1.0, 0.0, 0.0, discontinuity.b));
 		
-		float a = 0, b = 0;
+		float a = 0.0, b = 0.0;
 		
 		//If there is umbra on left or right
 		if(left && right) {
@@ -787,6 +805,10 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 				referenceCoord.x = lightCoord.x + shadowMapStep.x;
 				right = getDisc(referenceCoord, vec2(1.0, 0.0), 0.0);
 
+				//Break if the sample is out of the shadow
+				if(lightCoord.z <= texture2D(shadowMap, lightCoord.xy).z)
+					break; 
+				
 				lightCoord.y += ((discontinuity.g - 0.75) * 4.0) * shadowMapStep.y;
 			
 			}
@@ -816,7 +838,7 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 		referenceCoord.y = lightCoord.y + shadowMapStep.y;
 		bool bottom = getDisc(referenceCoord, vec2(0.0, 1.0), 0.0);
 		
-		float a = 0, b = 0;
+		float a = 0.0, b = 0.0;
 		
 		//If there is umbra on bottom and top
 		if(bottom && top) {
@@ -837,8 +859,8 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 
 				mult = (count / 2) + 1;
 
-				if(mod(float(count), 2.0) == 0) referenceCoord.x = lightCoord.x + mult * shadowMapStep.x;
-				else referenceCoord.x = lightCoord.x - mult * shadowMapStep.x;
+				if(mod(float(count), 2.0) == 0.0) referenceCoord.x = lightCoord.x + float(mult) * shadowMapStep.x;
+				else referenceCoord.x = lightCoord.x - float(mult) * shadowMapStep.x;
 
 				referenceCoord.y = lightCoord.y - shadowMapStep.y;
 				top = getDisc(referenceCoord, vec2(0.0, 1.0), 0.0);
@@ -864,17 +886,17 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 		}
 		
 	}
-
+	
 	//If exiting top and bottom discontinuity
 	if(discontinuity.r != 0.0 && discontinuity.g == 0.75 && discontinuity.b == 1.0) {
 			
 		//Scan exiting discontinuity in the opposite x-axis direction
 		lightCoord.x -= ((discontinuity.r - 0.75) * 4.0) * shadowMapStep.x;
 		
-		bool bottom = getDisc(lightCoord, vec2(0.0, 0.0), vec4(0.0, 0.5, 0.0, discontinuity.b));
-		bool top = getDisc(lightCoord, vec2(0.0, 0.0), vec4(0.0, 1.0, 0.0, discontinuity.b));
+		bool bottom = getDisc(lightCoord, vec2(1.0, 0.0), vec4(0.0, 0.5, 0.0, discontinuity.b));
+		bool top = getDisc(lightCoord, vec2(1.0, 0.0), vec4(0.0, 1.0, 0.0, discontinuity.b));
 		
-		float a = 0, b = 0;
+		float a = 0.0, b = 0.0;
 		
 		//If there is umbra on bottom and top
 		if(bottom && top) {
@@ -894,20 +916,25 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 		} else {
 			
 			vec4 referenceCoord;
-			
+			float center;
+
 			if(discontinuity.r == 0.75) 
 				return 0.0;
 			
 			while(!top && !bottom) {
 
 				referenceCoord = lightCoord;
-
+				
 				referenceCoord.y = lightCoord.y - shadowMapStep.y;
 				top = getDisc(referenceCoord, vec2(0.0, 1.0), 0.0);
 				
 				referenceCoord.y = lightCoord.y + shadowMapStep.y;
 				bottom = getDisc(referenceCoord, vec2(0.0, 1.0), 0.0);
-			
+				
+				//Break if the sample is out of the shadow
+				if(lightCoord.z <= texture2D(shadowMap, lightCoord.xy).z)
+					break; 
+				
 				lightCoord.x -= ((discontinuity.r - 0.75) * 4.0) * shadowMapStep.x;
 			
 			}
@@ -927,7 +954,7 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 		}
 		
 	}
-
+	
 	//If discontinuity in both axes (corner)
 	if(discontinuity.r > 0.0 && discontinuity.g > 0.0) {
 			
@@ -1092,7 +1119,7 @@ float smoothONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinui
 				step(1.0, discontinuity.b));
 		
 	}
-
+	
 	return 1.0 - discontinuity.b;
 
 }
@@ -1113,12 +1140,87 @@ float computePreEvaluationBasedOnNormalOrientation()
 
 }
 
+vec4 computeDiscontinuity(vec4 normalizedLightCoord, float distanceFromLight) 
+{
+
+	float center = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
+	
+	//Entering discontinuity, where the current fragment is outside the umbra and the neighbour is inside the umbra
+	//Exiting discontinuity, where the current fragment is inside the umbra and the neighbour is outside the umbra
+	//discType = 0.0 for entering/1.0 for exiting discontinuities
+				
+	float discType = 1.0 - center;
+	vec4 dir = getDisc(normalizedLightCoord, shadowMapStep, distanceFromLight, false, false);
+		
+	//we disable exiting discontinuities if the neighbour entering discontinuity is in all the directions
+	if(discType == 1.0) {
+					
+		vec4 temp;
+
+		if(dir.x == 1.0) {
+			temp = getDisc(vec4(normalizedLightCoord.x - shadowMapStep.x, normalizedLightCoord.yzw), shadowMapStep, distanceFromLight, true, false);
+			if(temp == vec4(0.0, 0.0, 0.0, 0.0)) dir.x = 0.0;
+		}
+
+		if(dir.y == 1.0) {
+			temp = getDisc(vec4(normalizedLightCoord.x + shadowMapStep.x, normalizedLightCoord.yzw), shadowMapStep, distanceFromLight, true, false);
+			if(temp == vec4(0.0, 0.0, 0.0, 0.0)) dir.y = 0.0;
+		}
+
+		if(dir.z == 1.0) {
+			temp = getDisc(vec4(normalizedLightCoord.x, normalizedLightCoord.y + shadowMapStep.y, normalizedLightCoord.zw), shadowMapStep, distanceFromLight, true, false);
+			if(temp == vec4(0.0, 0.0, 0.0, 0.0)) dir.z = 0.0;
+		}
+					
+		if(dir.w == 1.0) {
+			temp = getDisc(vec4(normalizedLightCoord.x, normalizedLightCoord.y - shadowMapStep.y, normalizedLightCoord.zw), shadowMapStep, distanceFromLight, true, false);
+			if(temp == vec4(0.0, 0.0, 0.0, 0.0)) dir.w = 0.0;
+		}
+				
+	} 	
+				
+	//we disable entering discontinuities if the neighbour exiting discontinuity is in all the directions
+	
+	if(discType == 0.0) {
+					
+		vec4 temp;
+
+		if(dir.x == 0.0) {
+			temp = getDisc(vec4(normalizedLightCoord.x - shadowMapStep.x, normalizedLightCoord.yzw), shadowMapStep, distanceFromLight, false, true);
+			if(temp == vec4(1.0, 1.0, 1.0, 1.0)) dir.x = 1.0;
+		}
+
+		if(dir.y == 0.0) {
+			temp = getDisc(vec4(normalizedLightCoord.x + shadowMapStep.x, normalizedLightCoord.yzw), shadowMapStep, distanceFromLight, false, true);
+			if(temp == vec4(1.0, 1.0, 1.0, 1.0)) dir.y = 1.0;
+		}
+
+		if(dir.z == 0.0) {
+			temp = getDisc(vec4(normalizedLightCoord.x, normalizedLightCoord.y + shadowMapStep.y, normalizedLightCoord.zw), shadowMapStep, distanceFromLight, false, true);
+			if(temp == vec4(1.0, 1.0, 1.0, 1.0)) dir.z = 1.0;
+		}
+					
+		if(dir.w == 0.0) {
+			temp = getDisc(vec4(normalizedLightCoord.x, normalizedLightCoord.y - shadowMapStep.y, normalizedLightCoord.zw), shadowMapStep, distanceFromLight, false, true);
+			if(temp == vec4(1.0, 1.0, 1.0, 1.0)) dir.w = 1.0;
+		}
+				
+	} 	
+				
+	vec4 disc = abs((dir - discType) - (center - discType)) * abs(center - discType);
+	vec2 dxdy = 0.75 + (-disc.xz + disc.yw) * 0.25;
+	vec2 color = dxdy * step(vec2(1.0), vec2(dot(disc.xy, vec2(1.0)), dot(disc.zw, vec2(1.0))));
+	return vec4(color, discType, 1.0);		
+		
+}
+
+
 vec4 computeShadowFromRSMSS(vec4 normalizedLightCoord, vec4 normalizedCameraCoord)
 {
 
+	
 	float distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;		
-	float shadow = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : shadowIntensity; 
-	vec4 discontinuity = texture2D(discontinuityMap, normalizedCameraCoord.xy);
+	vec4 discontinuity = computeDiscontinuity(normalizedLightCoord, distanceFromLight);
 	vec2 subCoord = fract(vec2(normalizedLightCoord.x * float(shadowMapWidth), normalizedLightCoord.y * float(shadowMapHeight)));
 		
 	if(discontinuity.r > 0.0 || discontinuity.g > 0.0) {
@@ -1149,15 +1251,18 @@ vec4 computeShadowFromRSMSS(vec4 normalizedLightCoord, vec4 normalizedCameraCoor
 		else
 			return phong() * fill;
 
+		
 	} else {
-
+	
 		if(showEnteringDiscontinuity == 1 || showExitingDiscontinuity == 1 || showONDS == 1 || showSubCoord == 1)
 			return vec4(0.0, 0.0, 0.0, 0.0);
-		else
+		else {
+			float shadow = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : shadowIntensity; 
 			return phong() * shadow;
-
+		}
+		
 	}
-
+	
 	
 }
 
@@ -1194,7 +1299,7 @@ vec4 computeShadowFromAccurateRPCF(vec4 normalizedLightCoord, vec4 normalizedCam
 
 		}
 	}
-
+	
 	//Compute discontinuity matrix
 	count = 0;
 	for(int w = 0; w < eachAxis; w++) {
@@ -1252,7 +1357,7 @@ vec4 computeShadowFromAccurateRPCF(vec4 normalizedLightCoord, vec4 normalizedCam
 
 		}
 	}
-
+	  
 	//sum the results
 	count = 0;
 	for(float w = -offset; w <= offset; w++) {
@@ -1295,7 +1400,7 @@ void main()
 	vec4 normalizedLightCoord = shadowCoord / shadowCoord.w;
 	vec4 normalizedCameraCoord = vec4(gl_FragCoord.x/float(width), gl_FragCoord.y/float(height), gl_FragCoord.z, 1.0);
 	float shadow = computePreEvaluationBasedOnNormalOrientation();
-	vec4 color;
+	vec4 color = vec4(0.0);
 	
 	if(shadow == 1.0) {
 
@@ -1305,11 +1410,13 @@ void main()
 			color = computeShadowFromAccurateRPCF(normalizedLightCoord, normalizedCameraCoord);
 
 	} else {
-	
+		
+		
 		if(showEnteringDiscontinuity == 1 || showExitingDiscontinuity == 1 || showONDS == 1 || showSubCoord == 1)
 			color = vec4(0.0, 0.0, 0.0, 0.0);
 		else
 			color = phong() * shadow;
+		
 
 	}
 

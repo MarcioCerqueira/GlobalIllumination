@@ -1,4 +1,3 @@
-uniform sampler2D discontinuityMap;
 uniform sampler2D shadowMap;
 uniform sampler2D meshTexturedColor;
 varying vec4 shadowCoord;
@@ -49,7 +48,7 @@ vec4 phong()
    vec4 light_specular = vec4(0.1, 0.1, 0.1, 1);
    vec4 light_diffuse = vec4(0.5, 0.5, 0.5, 1);
    float shininess = 60.0;
-
+   
    vec3 L = normalize(lightPosition.xyz - v);   
    vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0)  
    vec3 R = normalize(-reflect(L, N));  
@@ -62,14 +61,14 @@ vec4 phong()
    
    // calculate Specular Term:
    vec4 Ispec = light_specular * pow(max(dot(R,E),0.0), 0.3 * shininess);
-
+   
    vec4 sceneColor;
-   if(useTextureForColoring == 1)
+   if(useMeshColor == 1)
+      sceneColor = vec4(meshColor, 1.0);
+   else if(useTextureForColoring == 1)
       sceneColor = texture2D(meshTexturedColor, uvTexture);	
-   else if(useMeshColor == 1)
-      sceneColor = vec4(meshColor.r, meshColor.g, meshColor.b, 1);
    else
-	  sceneColor = gl_FrontLightModelProduct.sceneColor;
+      sceneColor = gl_FrontLightModelProduct.sceneColor;
    
    return sceneColor + Iamb + Idiff + Ispec;  
 
@@ -128,11 +127,6 @@ bool getDisc(vec4 normalizedLightCoord, vec2 dir, vec4 discType)
 			
 			relativeCoord.x = normalizedLightCoord.x - shadowMapStep.x;
 			distanceFromLight = texture2D(shadowMap, relativeCoord.xy).z;
-			//Solving incorrect shadowing due to numerical accuracy
-			if(abs(normalizedLightCoord.z - distanceFromLight) < depthThreshold && discType.b == 1.0) {
-				normalizedLightCoord.z -= depthThreshold;
-				newDepth = normalizedLightCoord.z;
-			}
 			bool isLeftUmbra = (normalizedLightCoord.z <= distanceFromLight) ? false : true; 
 			if((isLeftUmbra && discType.b == 0.0) || (!isLeftUmbra && discType.b == 1.0)) return true;
 			
@@ -142,11 +136,6 @@ bool getDisc(vec4 normalizedLightCoord, vec2 dir, vec4 discType)
 
 			relativeCoord.x = normalizedLightCoord.x + shadowMapStep.x;
 			distanceFromLight = texture2D(shadowMap, relativeCoord.xy).z;
-			//Solving incorrect shadowing due to numerical accuracy
-			if(abs(normalizedLightCoord.z - distanceFromLight) < depthThreshold && discType.b == 1.0) {
-				normalizedLightCoord.z -= depthThreshold;
-				newDepth = normalizedLightCoord.z;
-			}
 			bool isRightUmbra = (normalizedLightCoord.z <= distanceFromLight) ? false : true; 
 			if((isRightUmbra && discType.b == 0.0) || (!isRightUmbra && discType.b == 1.0)) return true;
 			
@@ -160,11 +149,6 @@ bool getDisc(vec4 normalizedLightCoord, vec2 dir, vec4 discType)
 				
 			relativeCoord.y = normalizedLightCoord.y + shadowMapStep.y;
 			distanceFromLight = texture2D(shadowMap, relativeCoord.xy).z;
-			//Solving incorrect shadowing due to numerical accuracy
-			if(abs(normalizedLightCoord.z - distanceFromLight) < depthThreshold && discType.b == 1.0) {
-				normalizedLightCoord.z -= depthThreshold;
-				newDepth = normalizedLightCoord.z;
-			}
 			bool isBottomUmbra = (normalizedLightCoord.z <= distanceFromLight) ? false : true; 
 			if((isBottomUmbra && discType.b == 0.0) || (!isBottomUmbra && discType.b == 1.0)) return true;
 			
@@ -174,11 +158,6 @@ bool getDisc(vec4 normalizedLightCoord, vec2 dir, vec4 discType)
 			
 			relativeCoord.y = normalizedLightCoord.y - shadowMapStep.y;
 			distanceFromLight = texture2D(shadowMap, relativeCoord.xy).z;
-			//Solving incorrect shadowing due to numerical accuracy
-			if(abs(normalizedLightCoord.z - distanceFromLight) < depthThreshold && discType.b == 1.0) {
-				normalizedLightCoord.z -= depthThreshold;
-				newDepth = normalizedLightCoord.z;
-			}
 			bool isTopUmbra = (normalizedLightCoord.z <= distanceFromLight) ? false : true; 
 			if((isTopUmbra && discType.b == 0.0) || (!isTopUmbra && discType.b == 1.0)) return true;
 			
@@ -219,7 +198,7 @@ float computeDiscontinuityLength(vec4 inputDiscontinuity, vec4 lightCoord, vec2 
 		float center = (centeredLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
 		bool isCenterUmbra = !bool(center);
 		
-		if((inputDiscontinuity.b == 0.0 && isCenterUmbra) || (inputDiscontinuity.b == 1.0 && !isCenterUmbra)) {
+		if(isCenterUmbra) {
 
 			foundEdgeEnd = 1.0;
 			break;
@@ -232,12 +211,6 @@ float computeDiscontinuityLength(vec4 inputDiscontinuity, vec4 lightCoord, vec2 
 		dist++;
 		centeredLightCoord.xy += shadowMapDiscontinuityStep;
 		
-		//For exiting discontinuity, we deal with incorrect shadowing in a different way.
-		//The limited accuracy of the shadow map affects only the shadow test for regions which are illuminated by the light source.
-		//Therefore, we use the depth threshold only during discontinuity evaluation (getDisc) and update the current depth later on.
-		if(inputDiscontinuity.b == 1.0) 
-			centeredLightCoord.z = newDepth;
-	
 	}
 	
 	return mix(-dist, dist, foundEdgeEnd);
@@ -431,15 +404,54 @@ float computePreEvaluationBasedOnNormalOrientation()
 
 }
 
-vec4 computeShadowFromSMSR(vec4 normalizedLightCoord, vec4 normalizedCameraCoord) 
+vec4 getDisc(vec4 normalizedLightCoord, float distanceFromLight) 
 {
 
+	vec4 dir = vec4(0.0, 0.0, 0.0, 0.0);
+	//x = left; y = right; z = bottom; w = top
+	
+	normalizedLightCoord.x -= shadowMapStep.x;
+	distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
+	dir.x = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
+	
+	normalizedLightCoord.x += 2.0 * shadowMapStep.x;
+	distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
+	dir.y = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
+	
+	normalizedLightCoord.x -= shadowMapStep.x;
+	normalizedLightCoord.y += shadowMapStep.y;
+	distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
+	dir.z = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
+	
+	normalizedLightCoord.y -= 2.0 * shadowMapStep.y;
+	distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
+	dir.w = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : 0.0; 
+	
+	return dir;
+
+}
+
+vec4 computeDiscontinuity(vec4 normalizedLightCoord, float distanceFromLight) 
+{
+
+	float discType = 0.0;
+	float center = 1.0;
+	vec4 dir = getDisc(normalizedLightCoord, distanceFromLight);
+	vec4 disc = abs((dir - discType) - (center - discType)) * abs(center - discType);
+	vec2 dxdy = 0.75 + (-disc.xz + disc.yw) * 0.25;
+	vec2 color = dxdy * step(vec2(1.0), vec2(dot(disc.xy, vec2(1.0)), dot(disc.zw, vec2(1.0))));
+	return vec4(color, discType, 1.0);		
+		
+}
+
+vec4 computeShadowFromSMSR(vec4 normalizedLightCoord, vec4 normalizedCameraCoord) 
+{
 	float distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;		
 	float shadow = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : shadowIntensity; 
 	
 	if(shadow == 1.0) {
 
-		vec4 discontinuity = texture2D(discontinuityMap, normalizedCameraCoord.xy);
+		vec4 discontinuity = computeDiscontinuity(normalizedLightCoord, distanceFromLight);
 		vec2 subCoord = fract(vec2(normalizedLightCoord.x * float(shadowMapWidth), normalizedLightCoord.y * float(shadowMapHeight)));
 				
 		if(discontinuity.r > 0.0 || discontinuity.g > 0.0) {
@@ -448,8 +460,9 @@ vec4 computeShadowFromSMSR(vec4 normalizedLightCoord, vec4 normalizedCameraCoord
 			vec4 normalizedDiscontinuity = normalizeDS(normalizedLightCoord, discontinuity, subCoord, discontinuitySpace);
 			float fill = clipONDS(normalizedLightCoord, normalizedDiscontinuity, discontinuity, subCoord);
 			fill = mix(fill, 1.0, shadowIntensity);
-						
+					
 			//post-processing
+			
 			if(normalizedDiscontinuity.x <= -2.0) 
 				normalizedDiscontinuity.x = abs(normalizedDiscontinuity.x) - 2.0;
 	
@@ -467,9 +480,9 @@ vec4 computeShadowFromSMSR(vec4 normalizedLightCoord, vec4 normalizedCameraCoord
 			else
 				return phong() * fill;
 			
+
 		} else {
 
-			
 			if(showEnteringDiscontinuity == 1 || showExitingDiscontinuity == 1 || showONDS == 1 || showSubCoord == 1)
 				return vec4(0.0, 0.0, 0.0, 0.0);
 			else
@@ -477,13 +490,14 @@ vec4 computeShadowFromSMSR(vec4 normalizedLightCoord, vec4 normalizedCameraCoord
 			
 		}
 
+		
 	} else {
 
 		if(showEnteringDiscontinuity == 1 || showExitingDiscontinuity == 1 || showONDS == 1 || showSubCoord == 1)
 			return vec4(0.0, 0.0, 0.0, 0.0);
 		else
 			return phong() * shadowIntensity;
-	
+		
 	}
 
 }
@@ -623,7 +637,7 @@ vec4 computeShadowFromRPCF(vec4 normalizedLightCoord, vec4 normalizedCameraCoord
 	//use light sub coordinates to improve smoothness
 	shadow = illuminationCount/float(eachAxis * eachAxis);
 	return phong() * shadow;
-
+	
 }
 
 void main()
@@ -632,8 +646,8 @@ void main()
 	vec4 normalizedLightCoord = shadowCoord / shadowCoord.w;
 	vec4 normalizedCameraCoord = vec4(gl_FragCoord.x/float(width), gl_FragCoord.y/float(height), gl_FragCoord.z, 1.0);
 	float shadow = computePreEvaluationBasedOnNormalOrientation();
-	vec4 color;
-	
+	vec4 color = vec4(0.0);
+
 	if(shadow == 1.0) {
 
 		if(SMSR == 1)
@@ -646,7 +660,7 @@ void main()
 		if(showEnteringDiscontinuity == 1 || showExitingDiscontinuity == 1 || showONDS == 1 || showSubCoord == 1)
 			color = vec4(0.0, 0.0, 0.0, 0.0);
 		else
-			color = phong() * shadow;
+			color = phong() * shadow;	
 
 	}
 
