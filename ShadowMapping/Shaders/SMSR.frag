@@ -84,12 +84,12 @@ bool getDisc(vec4 normalizedLightCoord, vec2 dir, float discType)
 		normalizedLightCoord.x -= shadowMapStep.x;
 		distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
 		bool isLeftUmbra = (normalizedLightCoord.z <= distanceFromLight) ? false : true; 
-		if((isLeftUmbra && discType == 0.0) || (!isLeftUmbra && discType == 1.0)) return true;
+		if(isLeftUmbra) return true;
 
 		normalizedLightCoord.x += 2.0 * shadowMapStep.x;
 		distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
 		bool isRightUmbra = (normalizedLightCoord.z <= distanceFromLight) ? false : true; 
-		if((isRightUmbra && discType == 0.0) || (!isRightUmbra && discType == 1.0)) return true;
+		if(isRightUmbra) return true;
 
 		normalizedLightCoord.x -= shadowMapStep.x;
 
@@ -100,12 +100,12 @@ bool getDisc(vec4 normalizedLightCoord, vec2 dir, float discType)
 		normalizedLightCoord.y += shadowMapStep.y;
 		distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
 		bool isBottomUmbra = (normalizedLightCoord.z <= distanceFromLight) ? false : true; 
-		if((isBottomUmbra && discType == 0.0) || (!isBottomUmbra && discType == 1.0)) return true;
+		if(isBottomUmbra) return true;
 
 		normalizedLightCoord.y -= 2.0 * shadowMapStep.y;
 		distanceFromLight = texture2D(shadowMap, normalizedLightCoord.st).z;
 		bool isTopUmbra = (normalizedLightCoord.z <= distanceFromLight) ? false : true; 
-		if((isTopUmbra && discType == 0.0) || (!isTopUmbra && discType == 1.0)) return true;
+		if(isTopUmbra) return true;
 
 	}
 
@@ -204,8 +204,10 @@ float computeDiscontinuityLength(vec4 inputDiscontinuity, vec4 lightCoord, vec2 
 			break;
 		
 		} else {
+
 		    hasDisc = getDisc(centeredLightCoord, dir, inputDiscontinuity);
 			if(!hasDisc) break;
+		
 		}
 
 		dist++;
@@ -280,56 +282,14 @@ float clipONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinuity
 	if(normalizedDiscontinuity.x == -1.0 && normalizedDiscontinuity.y == -1.0) 
 		return 1.0;
 
-	//If positive discontinuity on both directions and the discontinuity is in both sides of an axis, clip all the ONDS
-	if(normalizedDiscontinuity.x <= -2.0 && normalizedDiscontinuity.y <= -2.0 && (discontinuity.r == 0.75 || discontinuity.g == 0.75)) 
+	//If positive discontinuity, clip all the ONDS
+	if(normalizedDiscontinuity.x <= -2.0 || normalizedDiscontinuity.y <= -2.0)
 		return 0.0;
 
-	//hack: The normalized discontinuity less than -2.0 is used to indicate that there is positive discontinuity on both directions. 
-	//In this case, we decompress the real normalized discontinuity
-	if(normalizedDiscontinuity.x <= -2.0) 
-		normalizedDiscontinuity.x = abs(normalizedDiscontinuity.x) - 2.0;
-	
-	if(normalizedDiscontinuity.y <= -2.0) 
-		normalizedDiscontinuity.y = abs(normalizedDiscontinuity.y) - 2.0;
-
-	//If the discontinuity is in all the four directions, clip all the ONDS 
-	if(discontinuity.r == 0.75 && discontinuity.g == 0.75)
+	//If dual discontinuity
+	if(discontinuity.r == 0.75 || discontinuity.g == 0.75)
 		return 0.0;
 
-	//If left and right discontinuity
-	if(discontinuity.r == 0.75 && discontinuity.g != 0.0) {
-		
-		lightCoord.y += ((discontinuity.g - 0.75) * 4.0) * shadowMapStep.y;
-		bool vertical = getDisc(lightCoord, vec2(0.0, 0.0), discontinuity.b);
-		
-		//If there is discontinuity in the y-axis neighbourhood, fill all the ONDS
-		if(vertical) return 0.0;
-		
-		return mix(step(normalizedDiscontinuity.y, subCoord.x * 2.0), step(normalizedDiscontinuity.y, 1.0 - (subCoord.x - 0.5) * 2.0), step(0.5, subCoord.x));
-
-	}
-
-	//If top-bottom discontinuity
-	if(discontinuity.r != 0.0 && discontinuity.g == 0.75) {
-
-		lightCoord.x -= ((discontinuity.r - 0.75) * 4.0) * shadowMapStep.x;
-		bool horizontal = getDisc(lightCoord, vec2(0.0, 0.0), discontinuity.b);
-		
-		//If there is discontinuity in the x-axis neighbourhood, fill all the ONDS
-		if(horizontal) return 0.0;
-
-		return mix(step(1.0 - (subCoord.y * 2.0), 1.0 - normalizedDiscontinuity.x), step((subCoord.y - 0.5) * 2.0, 1.0 - normalizedDiscontinuity.x), step(0.5, subCoord.y));
-		
-	}
-
-	//If left-right discontinuity only
-	if(discontinuity.r == 0.75 && discontinuity.g == 0.0)
-		return mix(step(normalizedDiscontinuity.y, subCoord.x), step(normalizedDiscontinuity.y, 1.0 - subCoord.x), step(0.5, subCoord.x));
-
-	//If top-bottom discontinuity only
-	if(discontinuity.r == 0.0 && discontinuity.g == 0.75) 
-		return mix(step(1.0 - subCoord.y, 1.0 - normalizedDiscontinuity.x), step(subCoord.y, 1.0 - normalizedDiscontinuity.x), step(0.5, subCoord.y));
-	
 	//If discontinuity in both axis (corner)
 	if(discontinuity.r > 0.0 && discontinuity.g > 0.0) {
 
@@ -598,6 +558,7 @@ vec4 computeShadowFromRPCF(vec4 normalizedLightCoord, vec4 normalizedCameraCoord
 	}
 
 	//sum the results
+
 	count = 0;
 	for(float w = -offset; w <= offset; w++) {
 		for(float h = -offset; h <= offset; h++) {

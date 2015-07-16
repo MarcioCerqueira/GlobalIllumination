@@ -122,6 +122,7 @@ int vel = 1;
 //+900 
 //-150
 float animation = -1800;
+//float animation = 396;
 
 float xmin, xmax, ymin, ymax;
 
@@ -668,8 +669,8 @@ void shadowRevectorizationMenu(int id) {
 			//cameraEye[0] = -17.0;	cameraEye[1] = 4.0;	cameraEye[2] = -23;
 			//cameraAt[0] = -17.0;	cameraAt[1] = -42.0;	cameraAt[2] = -12.0;
 			//filtering
-			//cameraEye[0] = -17.0; cameraEye[1] = 3.1; cameraEye[2] = -6.5;
-			//cameraAt[0] = -17.0; cameraAt[1] = -44.0; cameraAt[2] = -4.0;
+			//cameraEye[0] = -15.0; cameraEye[1] = -5.0; cameraEye[2] = -17.0;
+			//cameraAt[0] = -15.0; cameraAt[1] = -30.0; cameraAt[2] = 23.0;
 			break;
 		case 1:
 			shadowParams.showEnteringDiscontinuityMap = true;

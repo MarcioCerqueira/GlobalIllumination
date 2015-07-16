@@ -1,5 +1,4 @@
 uniform sampler2D shadowMap;
-uniform sampler2D edgeMap;
 uniform sampler2D meshTexturedColor;
 uniform mat4 lightMV;
 uniform mat4 lightP;
@@ -121,6 +120,7 @@ vec4 textureBicubic(sampler2D sampler, vec2 texCoords){
 
 }
 
+/*
 float PCF(vec3 normalizedShadowCoord)
 {
 
@@ -179,6 +179,7 @@ float varianceShadowMapping(vec3 normalizedShadowCoord)
 	return chebyshevUpperBound(moments, normalizedShadowCoord.z);
 
 }
+
 
 float exponentialShadowMapping(vec3 normalizedShadowCoord)
 {
@@ -258,7 +259,7 @@ float hamburger4MSM(vec3 normalizedShadowCoord)
 		return clamp((1.0 - clamp(1.0 - (z.y * z.z - b.x * (z.y + z.z) + b.y)/((z.x - z.y) * (z.x - z.z)), 0.0, 1.0)), shadowIntensity, 1.0);
 	
 }
-
+*/
 /*
 float adaptiveDepthBias(vec3 normalizedShadowCoord)
 {
@@ -332,9 +333,13 @@ void main()
 	if(shadowCoord.w > 0.0 && shadow == 1.0) {
 
 		if(naive == 1) {
-			float distanceFromLight = texture2D(shadowMap, vec2(normalizedShadowCoord.st)).z;		
+			//float distanceFromLight = texture2D(shadowMap, vec2(normalizedShadowCoord.st)).z;		
+			float distanceFromLight = texture2DProj(shadowMap, shadowCoord).z;
 			shadow = (normalizedShadowCoord.z <= distanceFromLight) ? 1.0 : shadowIntensity; 
-		} else if(VSM == 1)
+			//shadow = shadow2D(shadowMap, normalizedShadowCoord.xyz);
+		} 
+		/*
+		else if(VSM == 1)
 			shadow = varianceShadowMapping(normalizedShadowCoord.xyz);
 		else if(ESM == 1)
 			shadow = exponentialShadowMapping(normalizedShadowCoord.xyz);
@@ -344,7 +349,7 @@ void main()
 			shadow = hamburger4MSM(normalizedShadowCoord.xyz);
 		else
 			shadow = PCF(normalizedShadowCoord.xyz);
-		
+		*/
 	}
 
 	gl_FragColor = shadow * color;
