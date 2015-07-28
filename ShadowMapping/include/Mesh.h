@@ -23,13 +23,14 @@ public:
 	void computeNormals();
 	void computeCentroid(float *centroid);
 	void loadOBJFile(char *filename);
-	void loadTexture(char *filename);
+	void loadTexture(char *filename, int ID);
+	void loadColorFromOBJFile(char *filename);
 	void translate(float x, float y, float z);
 	void scale(float x, float y, float z);
 	void rotate(float x, float y, float z);
+	
 	void setBaseColor(float r, float g, float b);
 	
-
 	float* getPointCloud() { return pointCloud; }
 	float* getNormalVector() { return normalVector; }
 	float* getTextureCoords() { return textureCoords; }

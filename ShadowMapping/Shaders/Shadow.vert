@@ -1,6 +1,6 @@
 varying vec3 N;
 varying vec3 v;
-varying vec2 uvTexture;
+varying vec3 uvTexture;
 varying vec4 shadowCoord;
 varying vec3 meshColor;
 varying vec3 lv;
@@ -15,7 +15,7 @@ uniform vec3 cameraPosition;
 attribute vec3 vertex;
 attribute vec3 normal;
 attribute vec3 color;
-attribute vec2 uv;
+attribute vec3 uv;
 
 void main(void)
 {

@@ -1,18 +1,20 @@
 o OBJ/Dragon/dragon.obj
 s 2.0 2.0 2.0
-t 0.0 -2.0 0.0
+t 0.0 -2.0 10.0
 c 1.0 0.0 0.0
 +
 o OBJ/Dragon/plane.obj
-s 40.0 1.0 40.0
+m OBJ/Dragon/floor.png
+s 60.0 1.0 40.0
 t 0.0 -8.0 0.0
-c 0.0 0.0 1.0
 +
 o OBJ/Dragon/plane.obj
-s 40.0 1.0 40.0
+m OBJ/Dragon/wall.png
+s 60.0 1.0 45.0
 r 90 0 0
 t 0.0 0.0 40.0
-c 0.0 0.0 1.0
 +
-v 0.0 25.0 -40.0
-l 10 100.0 100.0
+ve 0.0 41.0 -50.0
+va 0.0 16.0 -10.0
+le 10.0 130.0 100.0
+la 0.0 0.0 0.0

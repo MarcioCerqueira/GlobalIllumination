@@ -159,8 +159,8 @@ void Mesh::addObject(Mesh *mesh)
 			indices[index] = mesh->getIndices()[index - prevIndicesSize] + prevPointCloudSize/3;
 	
 		for(int tex = prevNumberOfTextures; tex < numberOfTextures; tex++) {
-			textures[tex] = new Image(mesh->getTexture()[tex]->getWidth(), mesh->getTexture()[tex]->getHeight(), 3);
-			memcpy(textures[tex]->getData(), mesh->getTexture()[tex]->getData(), mesh->getTexture()[tex]->getWidth() * mesh->getTexture()[tex]->getHeight() * 3 * sizeof(unsigned char));
+			textures[tex] = new Image(mesh->getTexture()[tex - prevNumberOfTextures]->getWidth(), mesh->getTexture()[tex - prevNumberOfTextures]->getHeight(), 3);
+			memcpy(textures[tex]->getData(), mesh->getTexture()[tex - prevNumberOfTextures]->getData(), mesh->getTexture()[tex - prevNumberOfTextures]->getWidth() * mesh->getTexture()[tex - prevNumberOfTextures]->getHeight() * 3 * sizeof(unsigned char));
 		}
 
 		if(numberOfTextures > 0) isTextureFromImage = true;
@@ -220,18 +220,15 @@ void Mesh::computeNormals()
 void Mesh::computeCentroid(float *centroid)
 {
 
-	
 	for(int axis = 0; axis < 3; axis++)
 		centroid[axis] = 0;
 
-	for(int point = 0; point < pointCloudSize/3; point++) {
+	for(int point = 0; point < pointCloudSize/3; point++)
 		for(int axis = 0; axis < 3; axis++)
 			centroid[axis] += pointCloud[point * 3 + axis];
-	}
 
 	for(int axis = 0; axis < 3; axis++)
 		centroid[axis] /= pointCloudSize/3;
-
 
 }
 
@@ -242,8 +239,8 @@ void Mesh::loadOBJFile(char *filename)
 
 	pointCloudSize = model->numvertices * 3;
 	indicesSize = model->numtriangles * 3;
-	textureCoordsSize = model->numtexcoords * 2;
-
+	textureCoordsSize = model->numvertices * 3; //we use the last coordinate to select the proper texture for rendering
+	
 	pointCloud = (float*)malloc(pointCloudSize * sizeof(float));
 	if(model->numnormals > 0) normalVector = (float*)malloc(pointCloudSize * sizeof(float));
 	indices = (int*)malloc(indicesSize * sizeof(int));
@@ -277,50 +274,75 @@ void Mesh::loadOBJFile(char *filename)
 	
 	}
 
-	for(int coord = 0; coord < textureCoordsSize/2; coord++) {
+	if(model->numtexcoords > 0) {
 
-		textureCoords[coord * 2 + 0] = model->texcoords[(coord + 1) * 2 + 0];
-		textureCoords[coord * 2 + 1] = model->texcoords[(coord + 1) * 2 + 1];
-		
+		for(int triangle = 0; triangle < model->numtriangles; triangle++) {
+
+			for(int index = 0; index < 3; index++) {
+			
+				int tCoord = model->triangles[triangle].tindices[index];
+				int vCoord = model->triangles[triangle].vindices[index];
+				textureCoords[(vCoord - 1) * 3 + 0] = model->texcoords[tCoord * 2 + 0];
+				textureCoords[(vCoord - 1) * 3 + 1] = model->texcoords[tCoord * 2 + 1];
+				textureCoords[(vCoord - 1) * 3 + 2] = 0;
+
+			}
+
+		}
+
 	}
-	
+
 	delete model;
 
 }
 
-void Mesh::loadTexture(char *filename) {
+void Mesh::loadTexture(char *filename, int ID) {
 
-	if(numberOfTextures == 0) {
-
-		textures = (Image**)malloc(sizeof(Image));
-		textures[numberOfTextures] = new Image(filename);
-		numberOfTextures++;
-		isTextureFromImage = true;
+	textures = (Image**)malloc(sizeof(Image));
+	textures[0] = new Image(filename);
+	numberOfTextures++;
+	isTextureFromImage = true;
 	
-	} else {
-		
-		int prevNumberOfTextures = numberOfTextures;
-		Image **prevTextures = (Image**)malloc(numberOfTextures * sizeof(Image));
+	for(int coord = 0; coord < textureCoordsSize/3; coord++) 
+		textureCoords[coord * 3 + 2] = ID;
+	
+}
 
-		for(int tex = 0; tex < prevNumberOfTextures; tex++) {
-			prevTextures[tex] = new Image(textures[tex]->getWidth(), textures[tex]->getHeight(), 3);
-			memcpy(prevTextures[tex]->getData(), textures[tex]->getData(), textures[tex]->getWidth() * textures[tex]->getHeight() * 3 * sizeof(unsigned char));
+void Mesh::loadColorFromOBJFile(char *filename) {
+
+	FILE* file;
+	char buf[128];
+	float temp[3];
+
+	//Opening the OBJ file
+    file = fopen(filename, "r");
+    
+	if (!file) {
+        fprintf(stderr, "glmReadOBJ() failed: can't open file \"%s\".\n",
+            filename);
+        exit(1);
+    }
+
+	//Reading the OBJ file
+	colorsSize = pointCloudSize;
+	colors = (float*)malloc(colorsSize * sizeof(float));
+	int numvertices = 0;
+
+	while(fscanf(file, "%s", buf) != EOF) {
+		switch(buf[0]) {
+			case 'v': 
+				switch(buf[1]) {
+					case '\0':   
+						fscanf(file, "%f %f %f %f %f %f", &temp[0], &temp[1], &temp[2], 
+						&colors[numvertices * 3 + 0], &colors[numvertices * 3 + 1], &colors[numvertices * 3 + 2]);
+					numvertices++;
+					break;
+				}
+			break;
 		}
-
-		delete [] textures;
-
-		textures = (Image**)malloc((numberOfTextures + 1) * sizeof(Image));
-
-		for(int tex = 0; tex < prevNumberOfTextures; tex++) {
-			textures[tex] = new Image(prevTextures[tex]->getWidth(), prevTextures[tex]->getHeight(), 3);
-			memcpy(textures[tex]->getData(), prevTextures[tex]->getData(), prevTextures[tex]->getWidth() * prevTextures[tex]->getHeight() * 3 * sizeof(unsigned char));
-		}
-
-		textures[numberOfTextures] = new Image(filename);
-		numberOfTextures++;
-		isTextureFromImage = true;
-
 	}
+
+	fclose(file);
 
 }
 

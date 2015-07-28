@@ -286,7 +286,8 @@ void MyGLGeometryViewer::drawPlane(float x, float y, float z) {
 
 }
 
-void MyGLGeometryViewer::drawMesh(GLuint *VBOs, int numberOfIndices, int numberOfTexCoords, int numberOfColors, bool textureFromImage, GLuint texture)
+void MyGLGeometryViewer::drawMesh(GLuint *VBOs, int numberOfIndices, int numberOfTexCoords, int numberOfColors, bool textureFromImage, GLuint *texture, 
+	int numberOfTextures)
 {
 	
 	GLuint textureFromImageID = glGetUniformLocation(shaderProg, "useTextureForColoring");
@@ -297,12 +298,20 @@ void MyGLGeometryViewer::drawMesh(GLuint *VBOs, int numberOfIndices, int numberO
 
 	if(textureFromImage) {
 		
-		GLuint textureID = glGetUniformLocation(shaderProg, "meshTexturedColor");
-		glUniform1i(textureID, 2);
-	
-		glActiveTexture(GL_TEXTURE2);
-		glBindTexture(GL_TEXTURE_2D, texture);
-		glGenerateMipmap(GL_TEXTURE_2D);
+		GLuint *textureID = (GLuint*)malloc(numberOfTextures * sizeof(GLuint));
+		char textureName[50];
+
+		for(int tex = 0; tex < numberOfTextures; tex++) {
+
+			sprintf(textureName, "texture%d", tex);
+			textureID[tex] = glGetUniformLocation(shaderProg, textureName);
+			glUniform1i(textureID[tex], 2 + tex);
+			glActiveTexture(GL_TEXTURE2 + tex);
+			glBindTexture(GL_TEXTURE_2D, texture[tex]);
+		
+		}
+
+		delete [] textureID;
 	
 	}
 
@@ -322,7 +331,7 @@ void MyGLGeometryViewer::drawMesh(GLuint *VBOs, int numberOfIndices, int numberO
 		attribute_uv = glGetAttribLocation(shaderProg, "uv");
 		glEnableVertexAttribArray(attribute_uv);
 		glBindBuffer(GL_ARRAY_BUFFER, VBOs[2]);
-		glVertexAttribPointer(attribute_uv, 2, GL_FLOAT, GL_FALSE, 0, 0);
+		glVertexAttribPointer(attribute_uv, 3, GL_FLOAT, GL_FALSE, 0, 0);
 	
 	}
 
@@ -349,9 +358,13 @@ void MyGLGeometryViewer::drawMesh(GLuint *VBOs, int numberOfIndices, int numberO
 	
 	if(textureFromImage) {
 		
-		glActiveTexture(GL_TEXTURE2);
-		glDisable(GL_TEXTURE_2D);
-	
+		for(int tex = 0; tex < numberOfTextures; tex++) {
+			
+			glActiveTexture(GL_TEXTURE2 + tex);
+			glDisable(GL_TEXTURE_2D);
+		
+		}
+
 	}
 
 }

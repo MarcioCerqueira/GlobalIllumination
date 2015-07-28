@@ -13,12 +13,16 @@ public:
 	SceneLoader(char *filename, Mesh *mesh);
 	void load();
 	float* getCameraPosition() { return cameraPosition; }
+	float* getCameraAt() { return cameraAt; }
 	float* getLightPosition() { return lightPosition; }
+	float* getLightAt() { return lightAt; }
 private:
 	Mesh *mesh;
 	std::fstream file;
 	float cameraPosition[3];
+	float cameraAt[3];
 	float lightPosition[3];
+	float lightAt[3];
 };
 
 #endif

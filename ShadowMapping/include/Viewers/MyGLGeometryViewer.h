@@ -26,7 +26,7 @@ public:
 	void configurePSRMatrix(int xmin, int xmax, int ymin, int ymax, int scaleRange, int width, int height);
 	void configureRevectorization(ShadowParams shadowParams, int imageWidth, int imageHeight);
 	void drawPlane(float x, float y, float z);
-	void drawMesh(GLuint *VBOs, int numberOfIndices, int numberOfTexCoords, int numberOfColors, bool textureFromImage, GLuint texture);
+	void drawMesh(GLuint *VBOs, int numberOfIndices, int numberOfTexCoords, int numberOfColors, bool textureFromImage, GLuint *textures, int numberOfTextures);
 	glm::mat4 getProjectionMatrix() { return projection; }
 	glm::mat4 getViewMatrix() { return view; }
 	glm::mat4 getModelMatrix() { return model; }

@@ -1,0 +1,25 @@
+o OBJ/Tree/TreeSub0.obj
+s 2.0 2.0 2.0
+t 0.0 -7.0 9.0
+cf OBJ/Tree/TreeSub0.obj
++
+o OBJ/Tree/TreeSub1.obj
+s 2.0 2.0 2.0
+t 0.0 -7.0 9.0
+cf OBJ/Tree/TreeSub1.obj
++
+o OBJ/Tree/plane.obj
+m OBJ/Tree/grass.png
+s 60.0 1.0 40.0
+t 0.0 -8.0 0.0
++
+o OBJ/Tree/plane.obj
+m OBJ/Tree/wall.png
+s 60.0 1.0 45.0
+r 90 0 0
+t 0.0 0.0 40.0
++
+ve 0.0 41.0 -57.0
+va 0.0 16.0 -17.0
+le 10.0 130.0 100.0
+la 0.0 0.0 0.0

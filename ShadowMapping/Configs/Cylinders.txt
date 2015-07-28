@@ -1,0 +1,39 @@
+o OBJ/Cylinders/cylinder.obj
+s 4.0 4.0 24.0
+r 90.0 0.0 0.0
+t -18.0 4.0 10.0
+c 0.0 0.5 1.0
++
+o OBJ/Cylinders/cylinder.obj
+s 4.0 4.0 24.0
+r 90.0 0.0 0.0
+t -6.0 4.0 10.0
+c 0.0 0.5 1.0
++
+o OBJ/Cylinders/cylinder.obj
+s 4.0 4.0 24.0
+r 90.0 0.0 0.0
+t 6.0 4.0 10.0
+c 0.0 0.5 1.0
++
+o OBJ/Cylinders/cylinder.obj
+s 4.0 4.0 24.0
+r 90.0 0.0 0.0
+t 18.0 4.0 10.0
+c 0.0 0.5 1.0
++
+o OBJ/Cylinders/plane.obj
+m OBJ/Cylinders/floor.png
+s 60.0 1.0 40.0
+t 0.0 -8.0 0.0
++
+o OBJ/Cylinders/plane.obj
+m OBJ/Cylinders/wall.png
+s 60.0 1.0 45.0
+r 90 0 0
+t 0.0 0.0 40.0
++
+ve 0.0 41.0 -50.0
+va 0.0 16.0 -10.0
+le 10.0 130.0 100.0
+la 0.0 0.0 0.0

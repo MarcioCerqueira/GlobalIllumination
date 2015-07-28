@@ -1,10 +1,12 @@
 uniform sampler2D shadowMap;
-uniform sampler2D meshTexturedColor;
+uniform sampler2D texture0;
+uniform sampler2D texture1;
+uniform sampler2D texture2;
 varying vec4 shadowCoord;
 varying vec3 N;
 varying vec3 v;
 varying vec3 meshColor;
-varying vec2 uvTexture;
+varying vec3 uvTexture;
 uniform mat4 MVP;
 uniform mat4 lightMVP;
 uniform mat4 inverseLightMVP;
@@ -44,34 +46,42 @@ float decompressPositiveDiscontinuity(float normalizedDiscontinuity) {
 vec4 phong()
 {
 
-   vec4 light_ambient = vec4(0.1, 0.1, 0.1, 1);
-   vec4 light_specular = vec4(0.1, 0.1, 0.1, 1);
-   vec4 light_diffuse = vec4(0.5, 0.5, 0.5, 1);
-   float shininess = 60.0;
+	vec4 light_ambient = vec4(0.4, 0.4, 0.4, 1);
+    vec4 light_specular = vec4(0.25, 0.25, 0.25, 1);
+    vec4 light_diffuse = vec4(0.5, 0.5, 0.5, 1);
+    float shininess = 10.0;
 
-   vec3 L = normalize(lightPosition.xyz - v);   
-   vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0)  
-   vec3 R = normalize(-reflect(L, N));  
+    vec3 L = normalize(lightPosition.xyz - v);   
+    vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0)  
+    vec3 R = normalize(-reflect(L, N));  
  
-   //calculate Ambient Term:  
-   vec4 Iamb = light_ambient;    
+    //calculate Ambient Term:  
+    vec4 Iamb = light_ambient;    
 
-   //calculate Diffuse Term:  
-   vec4 Idiff = light_diffuse * max(dot(N,L), 0.0);    
+    //calculate Diffuse Term:  
+    vec4 Idiff = light_diffuse * max(dot(N,L), 0.0);    
    
-   // calculate Specular Term:
-   vec4 Ispec = light_specular * pow(max(dot(R,E),0.0), 0.3 * shininess);
+    // calculate Specular Term:
+    vec4 Ispec = light_specular * pow(max(dot(R,E),0.0), 0.3 * shininess);
 
-   vec4 sceneColor;
-   if(useMeshColor == 1)
-      sceneColor = vec4(meshColor.r, meshColor.g, meshColor.b, 1);
-   else if(useTextureForColoring == 1)
-      sceneColor = texture2D(meshTexturedColor, uvTexture);	
-   else
-	  sceneColor = gl_FrontLightModelProduct.sceneColor;
+    vec4 sceneColor;
    
-   return sceneColor + Iamb + Idiff + Ispec;  
-
+    if(useTextureForColoring == 1) {
+		if(uvTexture.b > 0.99 && uvTexture.b < 1.001)
+			sceneColor = texture2D(texture0, vec2(uvTexture.rg));
+		else if(uvTexture.b > 1.999 && uvTexture.b < 2.001)
+			sceneColor = texture2D(texture1, vec2(uvTexture.rg));	
+		else if(uvTexture.b > 2.999 && uvTexture.b < 3.001)
+			sceneColor = texture2D(texture2, vec2(uvTexture.rg));
+		else
+			sceneColor = vec4(meshColor.r, meshColor.g, meshColor.b, 1);
+	} else if(useMeshColor == 1)
+		sceneColor = vec4(meshColor.r, meshColor.g, meshColor.b, 1);
+	else
+		sceneColor = gl_FrontLightModelProduct.sceneColor;
+   
+	return sceneColor * (Idiff + Ispec + Iamb);  
+   
 }
 
 vec4 getDisc(vec4 normalizedLightCoord, vec2 shadowMapStep, float distanceFromLight, bool breakForUmbra, bool breakForNoUmbra) 

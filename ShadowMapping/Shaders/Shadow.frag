@@ -1,5 +1,7 @@
 uniform sampler2D shadowMap;
-uniform sampler2D meshTexturedColor;
+uniform sampler2D texture0;
+uniform sampler2D texture1;
+uniform sampler2D texture2;
 uniform mat4 lightMV;
 uniform mat4 lightP;
 uniform mat4 mQuantization;
@@ -8,7 +10,7 @@ uniform vec4 tQuantization;
 varying vec3 N;
 varying vec3 v;  
 varying vec4 shadowCoord;
-varying vec2 uvTexture;
+varying vec3 uvTexture;
 varying vec3 meshColor;
 varying vec3 lv;
 varying vec3 ln;
@@ -36,34 +38,42 @@ uniform mat4 lightMVP;
 vec4 phong()
 {
 
-   vec4 light_ambient = vec4(0.1, 0.1, 0.1, 1);
-   vec4 light_specular = vec4(0.1, 0.1, 0.1, 1);
-   vec4 light_diffuse = vec4(0.5, 0.5, 0.5, 1);
-   float shininess = 60.0;
+	vec4 light_ambient = vec4(0.4, 0.4, 0.4, 1);
+    vec4 light_specular = vec4(0.25, 0.25, 0.25, 1);
+    vec4 light_diffuse = vec4(0.5, 0.5, 0.5, 1);
+    float shininess = 10.0;
 
-   vec3 L = normalize(lightPosition.xyz - v);   
-   vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0)  
-   vec3 R = normalize(-reflect(L, N));  
+    vec3 L = normalize(lightPosition.xyz - v);   
+    vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0)  
+    vec3 R = normalize(-reflect(L, N));  
  
-   //calculate Ambient Term:  
-   vec4 Iamb = light_ambient;    
+    //calculate Ambient Term:  
+    vec4 Iamb = light_ambient;    
 
-   //calculate Diffuse Term:  
-   vec4 Idiff = light_diffuse * max(dot(N,L), 0.0);    
+    //calculate Diffuse Term:  
+    vec4 Idiff = light_diffuse * max(dot(N,L), 0.0);    
    
-   // calculate Specular Term:
-   vec4 Ispec = light_specular * pow(max(dot(R,E),0.0), 0.3 * shininess);
+    // calculate Specular Term:
+    vec4 Ispec = light_specular * pow(max(dot(R,E),0.0), 0.3 * shininess);
 
-   vec4 sceneColor;
-   if(useTextureForColoring == 1)
-      sceneColor = texture2D(meshTexturedColor, uvTexture);	
-   else if(useMeshColor == 1)
-      sceneColor = vec4(meshColor.r, meshColor.g, meshColor.b, 1);
-   else
-	  sceneColor = gl_FrontLightModelProduct.sceneColor;
+    vec4 sceneColor;
    
-   return sceneColor + Iamb + Idiff + Ispec;  
-
+    if(useTextureForColoring == 1) {
+		if(uvTexture.b > 0.99 && uvTexture.b < 1.001)
+			sceneColor = texture2D(texture0, vec2(uvTexture.rg));
+		else if(uvTexture.b > 1.999 && uvTexture.b < 2.001)
+			sceneColor = texture2D(texture1, vec2(uvTexture.rg));	
+		else if(uvTexture.b > 2.999 && uvTexture.b < 3.001)
+			sceneColor = texture2D(texture2, vec2(uvTexture.rg));
+		else
+			sceneColor = vec4(meshColor.r, meshColor.g, meshColor.b, 1);
+	} else if(useMeshColor == 1)
+		sceneColor = vec4(meshColor.r, meshColor.g, meshColor.b, 1);
+	else
+		sceneColor = gl_FrontLightModelProduct.sceneColor;
+   
+	return sceneColor * (Idiff + Ispec + Iamb);  
+   
 }
 
 float linearize(float depth) {
@@ -120,7 +130,6 @@ vec4 textureBicubic(sampler2D sampler, vec2 texCoords){
 
 }
 
-/*
 float PCF(vec3 normalizedShadowCoord)
 {
 
@@ -259,7 +268,7 @@ float hamburger4MSM(vec3 normalizedShadowCoord)
 		return clamp((1.0 - clamp(1.0 - (z.y * z.z - b.x * (z.y + z.z) + b.y)/((z.x - z.y) * (z.x - z.z)), 0.0, 1.0)), shadowIntensity, 1.0);
 	
 }
-*/
+
 /*
 float adaptiveDepthBias(vec3 normalizedShadowCoord)
 {
@@ -333,12 +342,11 @@ void main()
 	if(shadowCoord.w > 0.0 && shadow == 1.0) {
 
 		if(naive == 1) {
-			//float distanceFromLight = texture2D(shadowMap, vec2(normalizedShadowCoord.st)).z;		
-			float distanceFromLight = texture2DProj(shadowMap, shadowCoord).z;
+			float distanceFromLight = texture2D(shadowMap, vec2(normalizedShadowCoord.st)).z;		
+			//float distanceFromLight = texture2DProj(shadowMap, shadowCoord).z;
 			shadow = (normalizedShadowCoord.z <= distanceFromLight) ? 1.0 : shadowIntensity; 
 			//shadow = shadow2D(shadowMap, normalizedShadowCoord.xyz);
-		} 
-		/*
+		}
 		else if(VSM == 1)
 			shadow = varianceShadowMapping(normalizedShadowCoord.xyz);
 		else if(ESM == 1)
@@ -349,7 +357,7 @@ void main()
 			shadow = hamburger4MSM(normalizedShadowCoord.xyz);
 		else
 			shadow = PCF(normalizedShadowCoord.xyz);
-		*/
+
 	}
 
 	gl_FragColor = shadow * color;

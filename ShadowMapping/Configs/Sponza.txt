@@ -1,0 +1,11 @@
+o OBJ/Sponza/sponza.obj
+m OBJ/Sponza/sponza.jpg
+s 2 2 2
+r 0 90 0
+t 0.0 0.0 -30.0
+c 0.5 0.0 0.0
++
+ve 0.0 19.0 -52.0
+va 0.0 -2.0 -22.0
+le 0.0 43.0 -50.0
+la 0.0 -17.0 -17.0

@@ -17,6 +17,7 @@ void SceneLoader::load()
 	float translate[3];
 	float rotate[3];
 	float color[3];
+	int numberOfTextures = 0;
 
 	while(!file.eof()) 
 	{
@@ -32,7 +33,8 @@ void SceneLoader::load()
 			temp->computeNormals();
 		} else if(key[0] == 'm') {
 			split >> value;
-			temp->loadTexture((char*)value.c_str());
+			numberOfTextures++;
+			temp->loadTexture((char*)value.c_str(), numberOfTextures);
 		} else if(key[0] == 's') {
 			for(int axis = 0; axis < 3; axis++) {
 				split >> value;
@@ -57,19 +59,32 @@ void SceneLoader::load()
 		} else if(key[0] == 'v') {
 			for(int axis = 0; axis < 3; axis++) {
 				split >> value;
-				cameraPosition[axis] = atof(value.c_str());
+				if(key[1] == 'e') cameraPosition[axis] = atof(value.c_str());
+				else cameraAt[axis] = atof(value.c_str());
 			}
 		} else if(key[0] == 'l') {
 			for(int axis = 0; axis < 3; axis++) {
 				split >> value;
-				lightPosition[axis] = atof(value.c_str());
+				if(key[1] == 'e') lightPosition[axis] = atof(value.c_str());
+				else lightAt[axis] = atof(value.c_str());
 			}
 		} else if(key[0] == 'c') {
-			for(int axis = 0; axis < 3; axis++) {
+
+			if(key[1] == 'f') {
+			
 				split >> value;
-				color[axis] = atof(value.c_str());
+				temp->loadColorFromOBJFile((char*)value.c_str());
+			
+			} else {
+			
+				for(int axis = 0; axis < 3; axis++) {
+					split >> value;
+					color[axis] = atof(value.c_str());
+				}
+				temp->setBaseColor(color[0], color[1], color[2]);
+			
 			}
-			temp->setBaseColor(color[0], color[1], color[2]);
+
 		}
 
 	}
