@@ -16,6 +16,7 @@ public:
 	float* getCameraAt() { return cameraAt; }
 	float* getLightPosition() { return lightPosition; }
 	float* getLightAt() { return lightAt; }
+	float getDepthThreshold() { return depthThreshold; }
 private:
 	Mesh *mesh;
 	std::fstream file;
@@ -23,6 +24,7 @@ private:
 	float cameraAt[3];
 	float lightPosition[3];
 	float lightAt[3];
+	float depthThreshold;
 };
 
 #endif

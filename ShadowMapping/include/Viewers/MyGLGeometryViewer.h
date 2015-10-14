@@ -23,7 +23,6 @@ public:
 	void configurePhong(glm::vec3 lightPosition, glm::vec3 cameraPosition);
 	void configureShadow(ShadowParams shadowParams);
 	void configureMoments(ShadowParams shadowParams);
-	void configurePSRMatrix(int xmin, int xmax, int ymin, int ymax, int scaleRange, int width, int height);
 	void configureRevectorization(ShadowParams shadowParams, int imageWidth, int imageHeight);
 	void drawPlane(float x, float y, float z);
 	void drawMesh(GLuint *VBOs, int numberOfIndices, int numberOfTexCoords, int numberOfColors, bool textureFromImage, GLuint *textures, int numberOfTextures);

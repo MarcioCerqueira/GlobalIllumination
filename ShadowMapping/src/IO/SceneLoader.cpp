@@ -85,6 +85,9 @@ void SceneLoader::load()
 			
 			}
 
+		} else if(key[0] == 'd') {
+			split >> value;
+			depthThreshold = atof(value.c_str());
 		}
 
 	}

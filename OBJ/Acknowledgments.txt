@@ -7,5 +7,8 @@ Model: Teapot and Sponza
 TF3DM - http://tf3dm.com/
 Model: Tree
 
+Archive3D - archive3d.net
+Model: Fence
+
 Keenan Crane - http://www.cs.columbia.edu/~keenan/Projects/ModelRepository/
 Model: YeahRight

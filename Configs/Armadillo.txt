@@ -1,6 +1,6 @@
 o OBJ/Armadillo/armadillo.obj
 s 8.0 8.0 8.0
-t 0.0 1.6 10.0
+t 0.0 1.0 10.0
 c 0.75 0.6 0.0
 +
 o OBJ/Armadillo/plane.obj
@@ -8,13 +8,8 @@ m OBJ/Armadillo/floor.png
 s 60.0 1.0 40.0
 t 0.0 -8.0 0.0
 +
-o OBJ/Armadillo/plane.obj
-m OBJ/Armadillo/wall.png
-s 60.0 1.0 45.0
-r 90 0 0
-t 0.0 0.0 40.0
-+
 ve 0.0 41.0 -50.0
 va 0.0 16.0 -10.0
 le 10.0 130.0 100.0
 la 0.0 0.0 0.0
+d 0.000025

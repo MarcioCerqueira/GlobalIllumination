@@ -13,6 +13,22 @@ Mesh::Mesh()
 	numberOfTextures = 0;
 }
 
+Mesh::Mesh(int numberOfPoints, int numberOfTriangles) 
+{
+	
+	pointCloud = (float*)malloc(numberOfPoints * 3 * sizeof(float));
+	normalVector = (float*)malloc(numberOfPoints * 3 * sizeof(float));
+	colors = (float*)malloc(numberOfPoints * 3 * sizeof(float));
+	indices = (int*)malloc(numberOfTriangles * 3 * sizeof(int));
+	
+	pointCloudSize = numberOfPoints * 3;
+	indicesSize = numberOfTriangles * 3;
+	colorsSize = numberOfPoints * 3;
+
+	isTextureFromImage = false;
+	numberOfTextures = 0;
+}
+
 Mesh::~Mesh()
 {
 

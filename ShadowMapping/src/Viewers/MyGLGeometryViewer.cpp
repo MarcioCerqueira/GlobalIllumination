@@ -79,6 +79,8 @@ void MyGLGeometryViewer::configurePhong(glm::vec3 lightPosition, glm::vec3 camer
 
 	GLuint mvpId = glGetUniformLocation(shaderProg, "MVP");
 	glUniformMatrix4fv(mvpId, 1, GL_FALSE, &mvp[0][0]);
+	GLuint inverseMVPID = glGetUniformLocation(shaderProg, "inverseMVP");
+	glUniformMatrix4fv(inverseMVPID, 1, GL_FALSE, &glm::inverse(mvp)[0][0]);
 	GLuint mvId = glGetUniformLocation(shaderProg, "MV");
 	glUniformMatrix4fv(mvId, 1, GL_FALSE, &mv[0][0]);
 	GLuint nMId = glGetUniformLocation(shaderProg, "normalMatrix");
@@ -127,6 +129,8 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glUniform1i(shadowMapNaiveID, shadowParams.naive);
 	GLuint shadowMapDepthBiasID = glGetUniformLocation(shaderProg, "useAdaptiveDepthBias");
 	glUniform1i(shadowMapDepthBiasID, shadowParams.adaptiveDepthBias);
+	GLuint debugID = glGetUniformLocation(shaderProg, "debug");
+	glUniform1i(debugID, (int)shadowParams.debug);
 	GLuint shadowMap = glGetUniformLocation(shaderProg, "shadowMap");
 	glUniform1i(shadowMap, 0);
 
@@ -144,16 +148,11 @@ void MyGLGeometryViewer::configureMoments(ShadowParams shadowParams)
 {
 
 	glm::mat4 mQuantization, mQuantizationInverse;
-	/*
+	
 	mQuantization[0][0] = -2.07224649;	mQuantization[0][1] = 32.2370378;	mQuantization[0][2] = -68.5710746;	mQuantization[0][3] = 39.3703274;
 	mQuantization[1][0] = 13.7948857;	mQuantization[1][1] = -59.4683976;	mQuantization[1][2] = 82.035975;	mQuantization[1][3] = -35.3649032;
 	mQuantization[2][0] = 0.105877704;	mQuantization[2][1] = -1.90774663;	mQuantization[2][2] = 9.34965551;	mQuantization[2][3] = -6.65434907;
 	mQuantization[3][0] = 9.79240621;	mQuantization[3][1] = -33.76521106;	mQuantization[3][2] = 47.9456097;	mQuantization[3][3] = -23.9728048;
-	*/
-	mQuantization[0][0] = 4;	mQuantization[0][1] = 0;	mQuantization[0][2] = 0;	mQuantization[0][3] = 0;
-	mQuantization[1][0] = 4;	mQuantization[1][1] = 4;	mQuantization[1][2] = 0;	mQuantization[1][3] = 0;
-	mQuantization[2][0] = 4;	mQuantization[2][1] = 0;	mQuantization[2][2] = 4;	mQuantization[2][3] = 0;
-	mQuantization[3][0] = 4;	mQuantization[3][1] = 0;	mQuantization[3][2] = 0;	mQuantization[3][3] = 4;
 	
 	mQuantization = glm::transpose(mQuantization);
 	mQuantizationInverse = glm::inverse(mQuantization);
@@ -171,43 +170,6 @@ void MyGLGeometryViewer::configureMoments(ShadowParams shadowParams)
 		GLuint mQuantizationInverseID = glGetUniformLocation(shaderProg, "mQuantizationInverse");
 		glUniformMatrix4fv(mQuantizationInverseID, 1, GL_FALSE, &mQuantizationInverse[0][0]);
 	}
-
-}
-
-void MyGLGeometryViewer::configurePSRMatrix(int xmin, int xmax, int ymin, int ymax, int scaleRange, int width, int height) 
-{
-
-	//In OpenGL, the interval [-1, 1] for the y-axis is from bottom to top.
-	//Conventionally, we consider the interval [min, max] for the y-axis from top to bottom.
-
-	ymin = width - ymin;
-	ymax = height - ymax;
-
-	int aux;
-	aux = ymin;
-	ymin = ymax;
-	ymax = aux;
-
-	float normalizedXMin = (xmin - 0.5 * width)/(0.5 * width);
-	float normalizedXMax = (xmax - 0.5 * width)/(0.5 * width);
-	float normalizedYMin = (ymin - 0.5 * height)/(0.5 * height);
-	float normalizedYMax = (ymax - 0.5 * height)/(0.5 * height);
-	
-	float sx = 2.0/(normalizedXMax - normalizedXMin);
-	float sy = 2.0/(normalizedYMax - normalizedYMin);
-	float ox = (-sx * (normalizedXMax + normalizedXMin))/2.0;
-	float oy = (-sy * (normalizedYMax + normalizedYMin))/2.0;
-	
-	sx = 1.0f / ceil(1.0f / sx * scaleRange) * scaleRange;
-	sy = 1.0f / ceil(1.0f / sy * scaleRange) * scaleRange;
-
-	ox = ceil(ox * (width/2))/(width/2);
-	oy = ceil(oy * (height/2))/(height/2);
-
-	psr[0][0] = sx;		psr[0][1] = 0;		psr[0][2] = 0;		psr[0][3] = 0.0;
-	psr[1][0] = 0;		psr[1][1] = sy;		psr[1][2] = 0;		psr[1][3] = 0.0;
-	psr[2][0] = 0;		psr[2][1] = 0;		psr[2][2] = 1.0;	psr[2][3] = 0.0;
-	psr[3][0] = ox;		psr[3][1] = oy;		psr[3][2] = 0;		psr[3][3] = 1.0;
 
 }
 
@@ -262,7 +224,8 @@ void MyGLGeometryViewer::configureRevectorization(ShadowParams shadowParams, int
 	glUniform1i(RPCFID, shadowParams.RPCFPlusSMSR);
 	GLuint RPCFSubCoordID = glGetUniformLocation(shaderProg, "RPCFPlusRSMSS");
 	glUniform1i(RPCFSubCoordID, shadowParams.RPCFPlusRSMSS);
-	
+	GLuint debugID = glGetUniformLocation(shaderProg, "debug");
+	glUniform1i(debugID, (int)shadowParams.debug);
 	GLuint shadowID = glGetUniformLocation(shaderProg, "shadowMap");
 	glUniform1i(shadowID, 7);
 	

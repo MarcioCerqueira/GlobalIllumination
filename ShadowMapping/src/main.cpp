@@ -7,8 +7,8 @@
 //Bicubic filtering - C. Sigg and M. Hadwiger. Fast third-order texture filtering. 2006
 //Variance shadow maps - W. Donnelly and A. Lauritzen. Variance shadow maps. 2006
 //Solving bias and light-bleeding reduction in variance shadow maps - A. Lauritzen. Summed-area variance shadow maps. 2007
-//Exponential shadow maps. T. Annen et al. Exponential Shadow Maps. 2008
-//Exponential variance shadow maps. A. Lauritzen and Michael McCool. Layered Variance Shadow Maps. 2008
+//Exponential shadow maps - T. Annen et al. Exponential Shadow Maps. 2008
+//Exponential variance shadow maps - A. Lauritzen and Michael McCool. Layered Variance Shadow Maps. 2008
 //Solving temporal aliasing for fitting - F. Zhang et al. Practical Cascaded Shadow Maps. 2009
 //Reference book - E. Eisemann et al. Real-Time Shadows. 2011
 //Shadow Map Silhouette Revectorization - V. Boundarev. Shadow Map Silhouette Revectorization. 2014
@@ -29,6 +29,7 @@
 #include "IO\SceneLoader.h"
 #include "Mesh.h"
 #include "Image.h"
+#include "Filter.h"
 
 enum 
 {
@@ -46,33 +47,28 @@ enum
 {
 	SCENE_SHADER = 0,
 	SHADOW_MAPPING_SHADER = 1,
-	PSR_SHADER = 2,
-	MOMENTS_SHADER = 3,
-	GAUSSIAN_X_SHADER = 4,
-	GAUSSIAN_Y_SHADER = 5,
-	LOG_GAUSSIAN_X_SHADER = 6,
-	LOG_GAUSSIAN_Y_SHADER = 7,
-	EXPONENTIAL_SHADER = 8,
-	EXPONENTIAL_MOMENT_SHADER = 9,
-	SMSR_SHADER = 10,
-	RSMSS_SHADER = 11
+	MOMENTS_SHADER = 2,
+	GAUSSIAN_FILTER_SHADER = 3,
+	LOG_GAUSSIAN_FILTER_SHADER = 4,
+	EXPONENTIAL_SHADER = 5,
+	EXPONENTIAL_MOMENT_SHADER = 6,
+	SMSR_SHADER = 7,
+	RSMSS_SHADER = 8
 };
 
 bool temp = false;
 //Window size
-int windowWidth = 640;
-int windowHeight = 480;
+int windowWidth = 1280;
+int windowHeight = 720;
 
-int shadowMapWidth = 640;
-int shadowMapHeight = 480; 
-
-int PSRMapWidth = 640;
-int PSRMapHeight = 480;
+int shadowMapWidth = 512 * 2;
+int shadowMapHeight = 512 * 2;
 
 //  The number of frames
 int frameCount = 0;
 float fps = 0;
 int currentTime = 0, previousTime = 0;
+char fileName[1000];
 
 MyGLTextureViewer myGLTextureViewer;
 MyGLGeometryViewer myGLGeometryViewer;
@@ -81,7 +77,8 @@ ShadowParams shadowParams;
 Mesh *scene;
 SceneLoader *sceneLoader;
 
-Image *lightView;
+Image *framebufferImage;
+Filter *gaussianFilter;
 
 GLuint textures[10];
 GLuint sceneVBO[5];
@@ -115,16 +112,13 @@ float rotationAngles[3] = {0.0, 0.0, 0.0};
 bool translationOn = false;
 bool lightTranslationOn = false;
 bool rotationOn = false;
-bool psrOn = false;
+bool changeKernelSizeOn = false;
 bool animationOn = false;
 bool cameraOn = false;
 bool shadowIntensityOn = false;
 bool stop = false;
 int vel = 1;
-//+900 
-//-150
 float animation = -1800;
-//float animation = 396;
 
 float xmin, xmax, ymin, ymax;
 
@@ -141,8 +135,9 @@ void calculateFPS()
         fps = frameCount / (timeInterval / 1000.0f);
         previousTime = currentTime;
         frameCount = 0;
+	
 		printf("FPS: %f\n", fps);
-    }
+	}
 
 }
 
@@ -187,6 +182,28 @@ void updateLight()
 
 	if(animationOn)
 		lightEye = glm::mat3(glm::rotate((float)animation/10, glm::vec3(0, 1, 0))) * lightEye;
+
+}
+
+void debugVisualization()
+{
+
+	if(animationOn)
+	{
+		myGLTextureViewer.loadFrameBufferTexture(0, 0, windowWidth, windowHeight, framebufferImage->getData());
+		framebufferImage->splitSMSR();
+		/*
+		sprintf(fileName, "images/%d.png", (int)(animation/6) + 300);	
+		std::cout << "Saving ..." << fileName << std::endl;
+		framebufferImage->save(fileName);
+		*/
+
+		if(animation == 1794) {
+			animationOn = false;
+			framebufferImage->printSMSR();
+		}
+
+	}
 
 }
 
@@ -237,14 +254,6 @@ void displaySceneFromLightPOV()
 	model *= glm::rotate(rotationAngles[0], glm::vec3(1, 0, 0));
 	model *= glm::rotate(rotationAngles[1], glm::vec3(0, 1, 0));
 	model *= glm::rotate(rotationAngles[2], glm::vec3(0, 0, 1));
-	
-	if(psrOn) {
-	
-		glm::mat4 psr = myGLGeometryViewer.getPSRMatrix();
-		projection = psr * projection;
-		myGLGeometryViewer.setProjectionMatrix(projection);
-	
-	}
 
 	lightMVP = projection * view * model;
 	lightMV = view * model;
@@ -289,7 +298,6 @@ void displaySceneFromCameraPOV()
 void renderSMSR()
 {
 
-
 	glViewport(0, 0, windowWidth, windowHeight);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	
@@ -321,50 +329,8 @@ void renderSMSR()
 
 }
 
-void computePSR()
-{
-
-	glViewport(0, 0, PSRMapWidth, PSRMapHeight);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	
-	updateLight();
-	
-	glUseProgram(shaderProg[PSR_SHADER]);
-
-	glEnable(GL_CULL_FACE);
-	glCullFace(GL_FRONT);
-	glPolygonOffset(2.5f, 10.0f);
-	glEnable(GL_POLYGON_OFFSET_FILL);
-	
-	myGLGeometryViewer.setShaderProg(shaderProg[PSR_SHADER]);
-	myGLGeometryViewer.setEye(lightEye);
-	myGLGeometryViewer.setLook(lightAt);
-	myGLGeometryViewer.setUp(lightUp);
-	myGLGeometryViewer.configureAmbient(PSRMapWidth, PSRMapHeight);
-	
-	glm::mat4 projection = myGLGeometryViewer.getProjectionMatrix();
-	glm::mat4 view = myGLGeometryViewer.getViewMatrix();
-	glm::mat4 model = myGLGeometryViewer.getModelMatrix();
-	
-	model *= glm::translate(glm::vec3(translationVector[0], translationVector[1], translationVector[2]));
-	model *= glm::rotate(rotationAngles[0], glm::vec3(1, 0, 0));
-	model *= glm::rotate(rotationAngles[1], glm::vec3(0, 1, 0));
-	model *= glm::rotate(rotationAngles[2], glm::vec3(0, 0, 1));
-
-	displayScene();
-	glUseProgram(0);
-
-	glReadPixels(0, 0, PSRMapWidth, PSRMapHeight, GL_RGB, GL_UNSIGNED_BYTE, lightView->getData());
-	lightView->computeBoundingBoxFromOpenGLImage();
-	myGLGeometryViewer.configurePSRMatrix(lightView->getXMin(), lightView->getXMax(), lightView->getYMin(), lightView->getYMax(), 6, PSRMapWidth, PSRMapHeight);
-	
-}
-
 void display()
 {
-	
-	if(psrOn)
-		computePSR();
 	
 	//Rob Basler in http://fabiensanglard.net/shadowmappingVSM/ found out that the color buffer, 
 	//when used to store depth, should be cleared to 1.0 to run properly
@@ -377,23 +343,22 @@ void display()
 	
 	if(shadowParams.VSM || shadowParams.ESM || shadowParams.EVSM || shadowParams.MSM) {
 
+		if(shadowParams.VSM || shadowParams.MSM || shadowParams.EVSM)
+			myGLTextureViewer.setShaderProg(shaderProg[GAUSSIAN_FILTER_SHADER]);
+		else
+			myGLTextureViewer.setShaderProg(shaderProg[LOG_GAUSSIAN_FILTER_SHADER]);
+		
 		glBindFramebuffer(GL_FRAMEBUFFER, gaussianXFrameBuffer);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glViewport(0, 0, windowWidth, windowHeight);
-		if(shadowParams.VSM || shadowParams.MSM || shadowParams.EVSM)
-			myGLTextureViewer.setShaderProg(shaderProg[GAUSSIAN_X_SHADER]);
-		else
-			myGLTextureViewer.setShaderProg(shaderProg[LOG_GAUSSIAN_X_SHADER]);
+		myGLTextureViewer.configureSeparableFilter(gaussianFilter->getOrder(), gaussianFilter->getKernel(), true, false);
 		myGLTextureViewer.drawTextureOnShader(textures[SHADOW_MAP_COLOR], windowWidth, windowHeight);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);		
 		
 		glBindFramebuffer(GL_FRAMEBUFFER, gaussianYFrameBuffer);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glViewport(0, 0, windowWidth, windowHeight);
-		if(shadowParams.VSM || shadowParams.MSM || shadowParams.EVSM)
-			myGLTextureViewer.setShaderProg(shaderProg[GAUSSIAN_Y_SHADER]);
-		else
-			myGLTextureViewer.setShaderProg(shaderProg[LOG_GAUSSIAN_Y_SHADER]);
+		myGLTextureViewer.configureSeparableFilter(gaussianFilter->getOrder(), gaussianFilter->getKernel(), false, true);
 		myGLTextureViewer.drawTextureOnShader(textures[GAUSSIAN_X_MAP_COLOR], windowWidth, windowHeight);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);		
 		
@@ -403,20 +368,24 @@ void display()
 
 	}
 	
+	
 	glDisable(GL_CULL_FACE);
 	glDisable(GL_POLYGON_OFFSET_FILL);
 	
 	if(shadowParams.SMSR || shadowParams.RPCFPlusSMSR || shadowParams.RSMSS || shadowParams.RPCFPlusRSMSS) {
 				
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0);
+		glClearColor(0.63f, 0.82f, 0.96f, 1.0);
 		renderSMSR();
 
 	} else {
 
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0);
+		glClearColor(0.63f, 0.82f, 0.96f, 1.0);
 		displaySceneFromCameraPOV();
 		
 	}
+	
+	if(shadowParams.debug)
+		debugVisualization();
 	
 	glutSwapBuffers();
 	glutPostRedisplay();
@@ -466,6 +435,11 @@ void keyboard(unsigned char key, int x, int y)
 	case 27:
 		exit(0);
 		break;
+	case 's':
+		animationOn = true;
+		debugVisualization();
+		animationOn = false;
+		break;
 	}
 
 }
@@ -497,6 +471,8 @@ void specialKeyboard(int key, int x, int y)
 			lightTranslationVector[1] += 5 * vel;
 		if(shadowIntensityOn)
 			shadowParams.shadowIntensity += 0.05;
+		if(changeKernelSizeOn)
+			gaussianFilter->buildGaussianKernel(gaussianFilter->getOrder() + 2);
 		break;
 	case GLUT_KEY_DOWN:
 		if(cameraOn) {
@@ -520,6 +496,10 @@ void specialKeyboard(int key, int x, int y)
 			lightTranslationVector[1] -= 5 * vel;
 		if(shadowIntensityOn)
 			shadowParams.shadowIntensity -= 0.05;
+		if(changeKernelSizeOn) {
+			if(gaussianFilter->getOrder() > 3)
+				gaussianFilter->buildGaussianKernel(gaussianFilter->getOrder() - 2);
+		}
 		break;
 	case GLUT_KEY_LEFT:
 		if(cameraOn) {
@@ -644,9 +624,6 @@ void shadowRevectorizationBasedFilteringMenu(int id) {
 		case 0:
 			resetShadowParams();
 			shadowParams.RPCFPlusSMSR = true;
-			//TODO
-			//cameraEye[0] = -17.0; cameraEye[1] = 3.1; cameraEye[2] = -6.5;
-			//cameraAt[0] = -17.0; cameraAt[1] = -44.0; cameraAt[2] = -4.0;
 			break;
 		case 1:
 			resetShadowParams();
@@ -655,15 +632,6 @@ void shadowRevectorizationBasedFilteringMenu(int id) {
 		case 2:
 			resetShadowParams();
 			shadowParams.RSMSS = true;
-			//special case
-			//cameraEye[0] = -4.0; cameraEye[1] = -3.0; cameraEye[2] = -25.0;
-			//cameraAt[0] = -4.0; cameraAt[1] = -28.0; cameraAt[2] = 15.0;
-			//cameraEye[0] = 21.0; cameraEye[1] = -5.0; cameraEye[2] = -3.0;
-			//cameraAt[0] = 21.0; cameraAt[1] = -30.0; cameraAt[2] = 37.0;
-			//adaptive threshold
-			//cameraEye[0] = 3.0; cameraEye[1] = -1.22; cameraEye[2] = -7.6;
-			//cameraAt[0] = 3.0; cameraAt[1] = -47.0; cameraAt[2] = 3.0;
-			
 			break;
 	}
 }
@@ -675,13 +643,6 @@ void shadowRevectorizationMenu(int id) {
 		case 0:
 			resetShadowParams();
 			shadowParams.SMSR = true;
-			//TODO
-			//discontinuity break
-			//cameraEye[0] = -17.0;	cameraEye[1] = 4.0;	cameraEye[2] = -23;
-			//cameraAt[0] = -17.0;	cameraAt[1] = -42.0;	cameraAt[2] = -12.0;
-			//filtering
-			//cameraEye[0] = -15.0; cameraEye[1] = -5.0; cameraEye[2] = -17.0;
-			//cameraAt[0] = -15.0; cameraAt[1] = -30.0; cameraAt[2] = 23.0;
 			break;
 		case 1:
 			shadowParams.showEnteringDiscontinuityMap = true;
@@ -689,8 +650,6 @@ void shadowRevectorizationMenu(int id) {
 			shadowParams.showONDS = false;
 			shadowParams.showClippedONDS = false;
 			shadowParams.showSubCoord = false;
-			//cameraEye[0] = -17.0; cameraEye[1] = 3.1; cameraEye[2] = -6.5;
-			//cameraAt[0] = -17.0; cameraAt[1] = -44.0; cameraAt[2] = -4.0;
 			break;
 		case 2:
 			shadowParams.showEnteringDiscontinuityMap = false;
@@ -770,7 +729,7 @@ void otherFunctionsMenu(int id) {
 			shadowIntensityOn = !shadowIntensityOn;
 			break;
 		case 3:
-			psrOn = !psrOn;
+			changeKernelSizeOn = !changeKernelSizeOn;
 			break;
 		case 4:
 			printf("LightPosition: %f %f %f\n", lightEye[0], lightEye[1], lightEye[2]);
@@ -779,6 +738,9 @@ void otherFunctionsMenu(int id) {
 			printf("CameraAt: %f %f %f\n", cameraAt[0], cameraAt[1], cameraAt[2]);
 			printf("Global Translation: %f %f %f\n", translationVector[0], translationVector[1], translationVector[2]);
 			printf("Global Rotation: %f %f %f\n", rotationAngles[0], rotationAngles[1], rotationAngles[2]);
+			break;
+		case 5:
+			shadowParams.debug = !shadowParams.debug;
 			break;
 	}
 
@@ -831,8 +793,9 @@ void createMenu() {
 		glutAddMenuEntry("Animation [On/Off]", 0);
 		glutAddMenuEntry("Adaptive Depth Bias [On/Off]", 1);
 		glutAddMenuEntry("Shadow Intensity [On/Off]", 2);
-		glutAddMenuEntry("Focus on Potential Shadow Receiver [On/Off]", 3);
+		glutAddMenuEntry("Change Kernel Size", 3);
 		glutAddMenuEntry("Print Data", 4);
+		glutAddMenuEntry("Debug Visualization", 5);
 		
 	glutCreateMenu(mainMenu);
 		glutAddMenuEntry("Shadow Mapping", 0);
@@ -869,8 +832,11 @@ void initGL(char *configurationFile) {
 	scene = new Mesh();
 	sceneLoader = new SceneLoader(configurationFile, scene);
 	sceneLoader->load();
+	
+	framebufferImage = new Image(windowWidth, windowHeight, 3);
 
-	lightView = new Image(PSRMapWidth, PSRMapHeight, 3);
+	gaussianFilter = new Filter();
+	gaussianFilter->buildGaussianKernel(3);
 
 	float centroid[3];
 	scene->computeCentroid(centroid);
@@ -879,15 +845,16 @@ void initGL(char *configurationFile) {
 	lightAt[0] = sceneLoader->getLightAt()[0]; lightAt[1] = sceneLoader->getLightAt()[1]; lightAt[2] = sceneLoader->getLightAt()[2];
 	cameraUp[0] = 0.0; cameraUp[1] = 0.0; cameraUp[2] = 1.0;
 	lightUp[0] = 0.0; lightUp[1] = 0.0; lightUp[2] = 1.0;
-	
+
 	shadowParams.shadowMapWidth = shadowMapWidth;
 	shadowParams.shadowMapHeight = shadowMapHeight;
 	shadowParams.maxSearch = 256;
-	shadowParams.depthThreshold = 0.000025;
+	shadowParams.depthThreshold = sceneLoader->getDepthThreshold();
 	resetShadowParams();
 	shadowParams.naive = true;
 	shadowParams.adaptiveDepthBias = true;
 	shadowParams.shadowIntensity = 0.25;
+	shadowParams.debug = false;
 
 	myGLTextureViewer.loadQuad();
 	createMenu();
@@ -896,10 +863,10 @@ void initGL(char *configurationFile) {
 		for(int num = 0; num < scene->getNumberOfTextures(); num++)
 			myGLTextureViewer.loadRGBTexture(scene->getTexture()[num]->getData(), sceneTextures, num, scene->getTexture()[num]->getWidth(), scene->getTexture()[num]->getHeight());
 	
-	myGLTextureViewer.loadRGBTexture((float*)NULL, textures, SHADOW_MAP_COLOR, shadowMapWidth, shadowMapHeight);
-	myGLTextureViewer.loadRGBTexture((float*)NULL, textures, GAUSSIAN_X_MAP_COLOR, windowWidth, windowHeight);
-	myGLTextureViewer.loadRGBTexture((float*)NULL, textures, GAUSSIAN_Y_MAP_COLOR, windowWidth, windowHeight);
-	myGLTextureViewer.loadRGBTexture((float*)NULL, textures, RESULTING_SHADOW_MAP_COLOR, windowWidth, windowHeight, GL_NEAREST);
+	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, SHADOW_MAP_COLOR, shadowMapWidth, shadowMapHeight);
+	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, GAUSSIAN_X_MAP_COLOR, windowWidth, windowHeight);
+	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, GAUSSIAN_Y_MAP_COLOR, windowWidth, windowHeight);
+	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, RESULTING_SHADOW_MAP_COLOR, windowWidth, windowHeight);
 
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, SHADOW_MAP_DEPTH, shadowMapWidth, shadowMapHeight);
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, GAUSSIAN_X_MAP_DEPTH, windowWidth, windowHeight);
@@ -956,14 +923,11 @@ int main(int argc, char **argv) {
 
 	initShader("Shaders/Scene", SCENE_SHADER);
 	initShader("Shaders/Shadow", SHADOW_MAPPING_SHADER);
-	initShader("Shaders/PSR", PSR_SHADER);
 	initShader("Shaders/Moments", MOMENTS_SHADER);
 	initShader("Shaders/Exponential", EXPONENTIAL_SHADER);
 	initShader("Shaders/ExponentialMoments", EXPONENTIAL_MOMENT_SHADER);
-	initShader("Shaders/Gaussian/GaussianBlur3X", GAUSSIAN_X_SHADER);
-	initShader("Shaders/Gaussian/GaussianBlur3Y", GAUSSIAN_Y_SHADER);
-	initShader("Shaders/LogGaussian/LogGaussianBlur3X", LOG_GAUSSIAN_X_SHADER);
-	initShader("Shaders/LogGaussian/LogGaussianBlur3Y", LOG_GAUSSIAN_Y_SHADER);
+	initShader("Shaders/GaussianFilter", GAUSSIAN_FILTER_SHADER);
+	initShader("Shaders/LogGaussianFilter", LOG_GAUSSIAN_FILTER_SHADER);
 	initShader("Shaders/SMSR", SMSR_SHADER);
 	initShader("Shaders/RSMSS", RSMSS_SHADER);
 	glUseProgram(0); 
@@ -972,8 +936,8 @@ int main(int argc, char **argv) {
 
 	delete scene;
 	delete sceneLoader;
-	delete lightView;
-
+	delete framebufferImage;
+	delete gaussianFilter;
 	return 0;
 
 }

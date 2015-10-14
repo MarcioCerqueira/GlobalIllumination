@@ -58,6 +58,27 @@ void MyGLTextureViewer::loadRGBTexture(float *data, GLuint *texVBO, int index, i
 	
 }
 
+void MyGLTextureViewer::loadRGBATexture(float *data, GLuint *texVBO, int index, int imageWidth, int imageHeight, GLint param)
+{
+
+	glBindTexture(GL_TEXTURE_2D, texVBO[index]);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, param);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, param);
+	glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
+	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, imageWidth, imageHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	
+}
+
+void MyGLTextureViewer::loadFrameBufferTexture(int x, int y, int width, int height, unsigned char *frameBuffer) {
+
+	glReadPixels(x, y, width, height, GL_RGB, GL_UNSIGNED_BYTE, frameBuffer);
+
+}
+
 void MyGLTextureViewer::loadQuad()
 {
 
@@ -83,6 +104,31 @@ void MyGLTextureViewer::loadQuad()
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(cube_elements), cube_elements, GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
+}
+
+void MyGLTextureViewer::configureSeparableFilter(int order, float *kernel, bool horizontal, bool vertical, float sigmaSpace, float sigmaColor) 
+{
+
+	glUseProgram(shaderProg);
+
+	GLuint orderID = glGetUniformLocation(shaderProg, "order");
+	glUniform1i(orderID, order);
+	
+	GLuint horizontalID = glGetUniformLocation(shaderProg, "horizontal");
+	glUniform1i(horizontalID, (int)horizontal);
+	
+	GLuint verticalID = glGetUniformLocation(shaderProg, "vertical");
+	glUniform1i(verticalID, (int)vertical);
+	
+	GLuint filterID = glGetUniformLocation(shaderProg, "kernel");
+	glUniform1fv(filterID, order, kernel);
+
+	GLuint sigmaSpaceID = glGetUniformLocation(shaderProg, "sigmaSpace");
+	glUniform1f(sigmaSpaceID, sigmaSpace);
+	
+	GLuint sigmaColorID = glGetUniformLocation(shaderProg, "sigmaColor");
+	glUniform1f(sigmaColorID, sigmaColor);
+	
 }
 
 void MyGLTextureViewer::drawTextureOnShader(GLuint texture, int imageWidth, int imageHeight)
@@ -119,6 +165,62 @@ void MyGLTextureViewer::drawTextureOnShader(GLuint texture, int imageWidth, int 
 
 }
 
+void MyGLTextureViewer::drawTexturesForBilateralFiltering(GLuint lightDepthTexture, GLuint eyeDepthTexture, GLuint shadowTexture, int imageWidth, int imageHeight)
+{
+
+	glUseProgram(shaderProg);
+
+	GLuint width = glGetUniformLocation(shaderProg, "width");
+	glUniform1i(width, imageWidth);
+	GLuint height = glGetUniformLocation(shaderProg, "height");
+	glUniform1i(height, imageHeight);
+
+	GLuint lightDepthTextureID = glGetUniformLocation(shaderProg, "lightDepthTexture");
+	glUniform1i(lightDepthTextureID, 7);
+	
+	glActiveTexture(GL_TEXTURE7);
+	glBindTexture(GL_TEXTURE_2D, lightDepthTexture);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	
+	GLuint eyeDepthTextureID = glGetUniformLocation(shaderProg, "eyeDepthTexture");
+	glUniform1i(eyeDepthTextureID, 8);
+	
+	glActiveTexture(GL_TEXTURE8);
+	glBindTexture(GL_TEXTURE_2D, eyeDepthTexture);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	
+	GLuint shadowTextureID = glGetUniformLocation(shaderProg, "shadowTexture");
+	glUniform1i(shadowTextureID, 9);
+	
+	glActiveTexture(GL_TEXTURE9);
+	glBindTexture(GL_TEXTURE_2D, shadowTexture);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	
+	/*
+	GLuint attribute_texcoord = glGetAttribLocation(shaderProg, "texcoord");
+    glEnableVertexAttribArray(attribute_texcoord);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_texcoords);
+    glVertexAttribPointer(attribute_texcoord, 2, GL_FLOAT, GL_FALSE, 0, 0);
+	
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_cube_elements);
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+	glDisableVertexAttribArray(attribute_texcoord);
+    */
+
+	glActiveTexture(GL_TEXTURE7);
+	glDisable(GL_TEXTURE_2D);
+
+	glActiveTexture(GL_TEXTURE8);
+	glDisable(GL_TEXTURE_2D);
+
+	glActiveTexture(GL_TEXTURE9);
+	glDisable(GL_TEXTURE_2D);
+
+	//glUseProgram(0);
+
+}
+	
 void MyGLTextureViewer::drawShadow(GLuint *texVBO, int sceneColorIndex, int shadowIndex, int windowWidth, int windowHeight, GLuint shaderProg) 
 {
 

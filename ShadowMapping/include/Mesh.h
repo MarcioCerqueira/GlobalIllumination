@@ -17,6 +17,7 @@ class Mesh
 {
 public:
 	Mesh();
+	Mesh(int numberOfPoints, int numberOfTriangles);
 	~Mesh();
 	
 	void addObject(Mesh *mesh);
@@ -43,6 +44,7 @@ public:
 	int getTextureCoordsSize() { return textureCoordsSize; }
 	int getColorsSize() { return colorsSize; }
 	int getNumberOfTextures() { return numberOfTextures; }
+	int getNumberOfTriangles() { return indicesSize/3; }
 	bool textureFromImage() { return isTextureFromImage; }
 
 private:
