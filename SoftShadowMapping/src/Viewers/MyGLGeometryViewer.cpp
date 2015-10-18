@@ -104,12 +104,6 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	shadowParams.lightMVP = bias * shadowParams.lightMVP;
 	GLuint lightMVPID = glGetUniformLocation(shaderProg, "lightMVP");
 	glUniformMatrix4fv(lightMVPID, 1, GL_FALSE, &shadowParams.lightMVP[0][0]);
-	GLuint lightMVID = glGetUniformLocation(shaderProg, "lightMV");
-	glUniformMatrix4fv(lightMVID, 1, GL_FALSE, &shadowParams.lightMV[0][0]);
-	GLuint lightPID = glGetUniformLocation(shaderProg, "lightP");
-	glUniformMatrix4fv(lightPID, 1, GL_FALSE, &shadowParams.lightP[0][0]); 
-	GLuint lightMVPInvID = glGetUniformLocation(shaderProg, "lightMVPInv");
-	glUniformMatrix4fv(lightMVPInvID, 1, GL_FALSE, &glm::inverse(shadowParams.lightMVP)[0][0]);
 	GLuint shadowMapWidthID = glGetUniformLocation(shaderProg, "shadowMapWidth");
 	glUniform1i(shadowMapWidthID, shadowParams.shadowMapWidth);
 	GLuint shadowMapHeightID = glGetUniformLocation(shaderProg, "shadowMapHeight");
@@ -126,6 +120,10 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glUniform1i(shadowMap, 0);
 	GLuint accumulationMap = glGetUniformLocation(shaderProg, "accumulationMap");
 	glUniform1i(accumulationMap, 1);
+	GLuint vertexMap = glGetUniformLocation(shaderProg, "vertexMap");
+	glUniform1i(vertexMap, 7);
+	GLuint normalMap = glGetUniformLocation(shaderProg, "normalMap");
+	glUniform1i(normalMap, 8);
 
 	configureLinearization();
 
@@ -135,10 +133,22 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, shadowParams.accumulationMap);
 
+	glActiveTexture(GL_TEXTURE7);
+	glBindTexture(GL_TEXTURE_2D, shadowParams.vertexMap);
+
+	glActiveTexture(GL_TEXTURE8);
+	glBindTexture(GL_TEXTURE_2D, shadowParams.normalMap);
+
 	glActiveTexture(GL_TEXTURE0);
 	glDisable(GL_TEXTURE_2D);
 
 	glActiveTexture(GL_TEXTURE1);
+	glDisable(GL_TEXTURE_2D);
+
+	glActiveTexture(GL_TEXTURE7);
+	glDisable(GL_TEXTURE_2D);
+
+	glActiveTexture(GL_TEXTURE8);
 	glDisable(GL_TEXTURE_2D);
 
 }

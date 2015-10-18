@@ -131,6 +131,21 @@ void MyGLTextureViewer::configureSeparableFilter(int order, float *kernel, bool 
 	
 }
 
+void MyGLTextureViewer::drawTextureQuad() 
+{
+
+	GLuint attribute_texcoord = glGetAttribLocation(shaderProg, "texcoord");
+    glEnableVertexAttribArray(attribute_texcoord);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_texcoords);
+    glVertexAttribPointer(attribute_texcoord, 2, GL_FLOAT, GL_FALSE, 0, 0);
+	
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_cube_elements);
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+	glDisableVertexAttribArray(attribute_texcoord);
+ 
+}
+
 void MyGLTextureViewer::drawTextureOnShader(GLuint texture, int imageWidth, int imageHeight)
 {
 
@@ -147,17 +162,9 @@ void MyGLTextureViewer::drawTextureOnShader(GLuint texture, int imageWidth, int 
 	glActiveTexture(GL_TEXTURE7);
 	glBindTexture(GL_TEXTURE_2D, texture);
 	//glGenerateMipmap(GL_TEXTURE_2D);
-	
-	GLuint attribute_texcoord = glGetAttribLocation(shaderProg, "texcoord");
-    glEnableVertexAttribArray(attribute_texcoord);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_texcoords);
-    glVertexAttribPointer(attribute_texcoord, 2, GL_FLOAT, GL_FALSE, 0, 0);
-	
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_cube_elements);
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+	  
+	drawTextureQuad();
 
-	glDisableVertexAttribArray(attribute_texcoord);
-    
 	glActiveTexture(GL_TEXTURE7);
 	glDisable(GL_TEXTURE_2D);
 
@@ -196,18 +203,8 @@ void MyGLTextureViewer::drawTexturesForBilateralFiltering(GLuint lightDepthTextu
 	glBindTexture(GL_TEXTURE_2D, shadowTexture);
 	glGenerateMipmap(GL_TEXTURE_2D);
 	
-	/*
-	GLuint attribute_texcoord = glGetAttribLocation(shaderProg, "texcoord");
-    glEnableVertexAttribArray(attribute_texcoord);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_texcoords);
-    glVertexAttribPointer(attribute_texcoord, 2, GL_FLOAT, GL_FALSE, 0, 0);
-	
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_cube_elements);
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
-	glDisableVertexAttribArray(attribute_texcoord);
-    */
-
+	//drawTextureQuad()
+    
 	glActiveTexture(GL_TEXTURE7);
 	glDisable(GL_TEXTURE_2D);
 

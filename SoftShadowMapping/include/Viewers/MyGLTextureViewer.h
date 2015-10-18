@@ -18,6 +18,7 @@ public:
 	void loadFrameBufferTexture(int x, int y, int width, int height, unsigned char *frameBuffer);
 	void loadQuad();
 	void configureSeparableFilter(int order, float *kernel, bool horizontal, bool vertical, float sigmaSpace = 0, float sigmaColor = 0);
+	void drawTextureQuad();
 	void drawTextureOnShader(GLuint texture, int imageWidth, int imageHeight);
 	void drawTexturesForBilateralFiltering(GLuint lightDepthTexture, GLuint eyeDepthTexture, GLuint shadowTexture, int imageWidth, int imageHeight);
 	void drawShadow(GLuint *texVBO, int sceneColorIndex, int shadowIndex, int windowWidth, int windowHeight, GLuint shaderProg);

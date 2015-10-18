@@ -16,6 +16,8 @@ typedef struct ShadowParams
 	float accFactor;
 	GLuint shadowMap;
 	GLuint accumulationMap;
+	GLuint vertexMap;
+	GLuint normalMap;
 } ShadowParams;
 
 #endif
