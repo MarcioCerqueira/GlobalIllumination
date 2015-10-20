@@ -9,12 +9,11 @@ public:
 	
 	LightSource();
 
-	glm::vec3 getEye() { return eye; }
-	glm::vec3 getAt() { return at; }
 	glm::vec3 getUp() { return up; }
 	glm::vec3 getEye(int sample);
 	glm::vec3 getAt(int sample);
 	int getNumberOfPointLights() { return numberOfPointLights; }
+	int getSize() { return size; }
 
 	void setEye(glm::vec3 eye) { this->eye = eye; }
 	void setAt(glm::vec3 at) { this->at = at; }

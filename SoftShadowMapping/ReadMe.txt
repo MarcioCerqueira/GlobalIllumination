@@ -9,3 +9,5 @@ It was implemented based on the following papers:
 	- Accumulation Buffer proposed in "The Accumulation Buffer: Hardware Support for High-Quality Rendering" by P. Haeberli and K. Akeley in 1990;
 
 	- G-Buffer proposed in "Comprehensible Rendering of 3-D Shapes" by T. Saito and T. Takahashi in 1990;
+
+	- Percentage-Closer Soft Shadows proposed in "Percentage-Closer Soft Shadows" by R. Fernando in 2005;

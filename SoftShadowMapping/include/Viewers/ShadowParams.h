@@ -12,8 +12,13 @@ typedef struct ShadowParams
 	int shadowMapHeight;
 	int windowWidth;
 	int windowHeight;
+	int blockerSearchSize;
+	int kernelSize;
+	int lightSourceRadius;
 	float shadowIntensity;
 	float accFactor;
+	bool monteCarlo;
+	bool PCSS;
 	GLuint shadowMap;
 	GLuint accumulationMap;
 	GLuint vertexMap;

@@ -116,40 +116,59 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glUniform1f(shadowIntensityID, shadowParams.shadowIntensity);
 	GLuint accFactorID = glGetUniformLocation(shaderProg, "accFactor");
 	glUniform1f(accFactorID, shadowParams.accFactor);
+	GLuint blockerSearchSizeID = glGetUniformLocation(shaderProg, "blockerSearchSize");
+	glUniform1i(blockerSearchSizeID, shadowParams.blockerSearchSize);
+	GLuint kernelSizeID = glGetUniformLocation(shaderProg, "kernelSize");
+	glUniform1i(kernelSizeID, shadowParams.kernelSize);
+	GLuint lightSourceRadiusID = glGetUniformLocation(shaderProg, "lightSourceRadius");
+	glUniform1i(lightSourceRadiusID, shadowParams.lightSourceRadius);
 	GLuint shadowMap = glGetUniformLocation(shaderProg, "shadowMap");
 	glUniform1i(shadowMap, 0);
-	GLuint accumulationMap = glGetUniformLocation(shaderProg, "accumulationMap");
-	glUniform1i(accumulationMap, 1);
-	GLuint vertexMap = glGetUniformLocation(shaderProg, "vertexMap");
-	glUniform1i(vertexMap, 7);
-	GLuint normalMap = glGetUniformLocation(shaderProg, "normalMap");
-	glUniform1i(normalMap, 8);
+
+	if(shadowParams.monteCarlo) {
+
+		GLuint accumulationMap = glGetUniformLocation(shaderProg, "accumulationMap");
+		glUniform1i(accumulationMap, 1);
+		GLuint vertexMap = glGetUniformLocation(shaderProg, "vertexMap");
+		glUniform1i(vertexMap, 7);
+		GLuint normalMap = glGetUniformLocation(shaderProg, "normalMap");
+		glUniform1i(normalMap, 8);
+	
+	} 
 
 	configureLinearization();
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, shadowParams.shadowMap);
 
-	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, shadowParams.accumulationMap);
+	if(shadowParams.monteCarlo) {
 
-	glActiveTexture(GL_TEXTURE7);
-	glBindTexture(GL_TEXTURE_2D, shadowParams.vertexMap);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, shadowParams.accumulationMap);
 
-	glActiveTexture(GL_TEXTURE8);
-	glBindTexture(GL_TEXTURE_2D, shadowParams.normalMap);
+		glActiveTexture(GL_TEXTURE7);
+		glBindTexture(GL_TEXTURE_2D, shadowParams.vertexMap);
+
+		glActiveTexture(GL_TEXTURE8);
+		glBindTexture(GL_TEXTURE_2D, shadowParams.normalMap);
+		
+	}
 
 	glActiveTexture(GL_TEXTURE0);
 	glDisable(GL_TEXTURE_2D);
 
-	glActiveTexture(GL_TEXTURE1);
-	glDisable(GL_TEXTURE_2D);
+	if(shadowParams.monteCarlo) {
 
-	glActiveTexture(GL_TEXTURE7);
-	glDisable(GL_TEXTURE_2D);
+		glActiveTexture(GL_TEXTURE1);
+		glDisable(GL_TEXTURE_2D);
 
-	glActiveTexture(GL_TEXTURE8);
-	glDisable(GL_TEXTURE_2D);
+		glActiveTexture(GL_TEXTURE7);
+		glDisable(GL_TEXTURE_2D);
+
+		glActiveTexture(GL_TEXTURE8);
+		glDisable(GL_TEXTURE_2D);
+
+	}
 
 }
 

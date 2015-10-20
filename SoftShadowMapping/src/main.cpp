@@ -3,6 +3,7 @@
 //Monte-Carlo Soft Shadow Volumes/Mapping - L. Brotman and N. Badler. Generating Soft Shadows with a Depth Buffer Algorithm. 1984.
 //Accumulation Buffer - P. Haeberli and K. Akeley. The Accumulation Buffer: Hardware Support for High-Quality Rendering. 1990.
 //G-Buffer - T. Saito and T. Takahashi. Comprehensible Rendering of 3-D Shapes. 1990.
+//Percentage-Closer Soft Shadows - R. Fernando. Percentage-Closer Soft Shadows. 2005.
 //http://rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling/ for gaussian mask weights
 //http://www.3drender.com/challenges/ (.obj, .mtl)
 //http://graphics.cs.williams.edu/data/meshes.xml (.obj, .mtl)
@@ -41,9 +42,19 @@ enum
 	SHADOW_SHADER = 1,
 	CLEAR_SHADER = 2,
 	COPY_SHADER = 3,
-	RENDER_SHADER = 4,
+	MONTE_CARLO_RENDER_SHADER = 4,
 	GBUFFER_VERTEX_SHADER = 5,
-	GBUFFER_NORMAL_SHADER = 6
+	GBUFFER_NORMAL_SHADER = 6,
+	PCSS_SHADER = 7
+};
+
+enum
+{
+	SHADOW_FRAMEBUFFER = 0,
+	ACCUMULATION_FRAMEBUFFER = 1,
+	TEMP_ACCUMULATION_FRAMEBUFFER = 2,
+	VERTEX_FRAMEBUFFER = 3,
+	NORMAL_FRAMEBUFFER = 4
 };
 
 bool temp = false;
@@ -68,15 +79,10 @@ Mesh *scene;
 SceneLoader *sceneLoader;
 LightSource *lightSource;
 
-GLuint textures[10];
+GLuint textures[20];
+GLuint frameBuffer[10];
 GLuint sceneVBO[5];
 GLuint sceneTextures[4];
-
-GLuint shadowFrameBuffer;
-GLuint accumulationFrameBuffer;
-GLuint tempAccumulationFrameBuffer;
-GLuint vertexFrameBuffer;
-GLuint normalFrameBuffer;
 
 glm::vec3 cameraEye;
 glm::vec3 cameraAt;
@@ -101,10 +107,13 @@ bool rotationOn = false;
 bool animationOn = false;
 bool cameraOn = false;
 bool shadowIntensityOn = false;
+bool changeKernelSizeOn = false;
+bool changeBlockerSearchSizeOn = false;
 bool stop = false;
+
 int vel = 1;
 float animation = -1800;
-int pointLightSample = 0;
+int pointLightSample = -1;
 
 void calculateFPS()
 {
@@ -180,7 +189,7 @@ void displaySceneFromLightPOV()
 	
 	glPolygonOffset(4.0f, 20.0f);
 	glEnable(GL_POLYGON_OFFSET_FILL);
-	
+
 	myGLGeometryViewer.setEye(lightSource->getEye(pointLightSample));
 	myGLGeometryViewer.setLook(lightSource->getAt(pointLightSample));
 	myGLGeometryViewer.setUp(lightSource->getUp());
@@ -217,7 +226,7 @@ void displaySceneFromCameraPOV(GLuint shader)
 	glUseProgram(shader);
 	myGLGeometryViewer.setShaderProg(shader);
 	shadowParams.shadowMap = textures[SHADOW_MAP_DEPTH];
-	shadowParams.accumulationMap = textures[ACCUMULATION_MAP_COLOR];
+	if(shadowParams.monteCarlo) shadowParams.accumulationMap = textures[ACCUMULATION_MAP_COLOR];
 	shadowParams.lightMVP = lightMVP;
 
 	myGLGeometryViewer.setEye(cameraEye);
@@ -273,36 +282,36 @@ void displaySceneFromGBuffer()
 
 }
 
-void display()
+void renderMonteCarlo()
 {
+
+	myGLTextureViewer.setShaderProg(shaderProg[CLEAR_SHADER]);
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0);
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[ACCUMULATION_FRAMEBUFFER]);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glViewport(0, 0, windowWidth, windowHeight);
+	myGLTextureViewer.drawTextureOnShader(textures[SHADOW_MAP_COLOR], windowWidth, windowHeight);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	
-	if(pointLightSample == 0) {
+	pointLightSample = -1;
+
+	glClearColor(0.63f, 0.82f, 0.96f, 1.0);
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[VERTEX_FRAMEBUFFER]);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	displaySceneFromCameraPOV(shaderProg[GBUFFER_VERTEX_SHADER]);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[NORMAL_FRAMEBUFFER]);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	displaySceneFromCameraPOV(shaderProg[GBUFFER_NORMAL_SHADER]);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	
-		myGLTextureViewer.setShaderProg(shaderProg[CLEAR_SHADER]);
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0);
-		glBindFramebuffer(GL_FRAMEBUFFER, accumulationFrameBuffer);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		glViewport(0, 0, windowWidth, windowHeight);
-		myGLTextureViewer.drawTextureOnShader(textures[SHADOW_MAP_COLOR], windowWidth, windowHeight);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		
-		glClearColor(0.63f, 0.82f, 0.96f, 1.0);
-		glBindFramebuffer(GL_FRAMEBUFFER, vertexFrameBuffer);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		displaySceneFromCameraPOV(shaderProg[GBUFFER_VERTEX_SHADER]);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		
-		glBindFramebuffer(GL_FRAMEBUFFER, normalFrameBuffer);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		displaySceneFromCameraPOV(shaderProg[GBUFFER_NORMAL_SHADER]);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		
-	}
-	
+	pointLightSample = 0;
+
 	while(pointLightSample < lightSource->getNumberOfPointLights()) {
 
 		glClearColor(1.0f, 1.0f, 1.0f, 1.0);
-		glBindFramebuffer(GL_FRAMEBUFFER, shadowFrameBuffer);
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[SHADOW_FRAMEBUFFER]);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		displaySceneFromLightPOV();
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -311,7 +320,7 @@ void display()
 		glDisable(GL_POLYGON_OFFSET_FILL);
 	
 		glClearColor(0.63f, 0.82f, 0.96f, 1.0);
-		glBindFramebuffer(GL_FRAMEBUFFER, tempAccumulationFrameBuffer);
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_ACCUMULATION_FRAMEBUFFER]);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		displaySceneFromGBuffer();
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -319,7 +328,7 @@ void display()
 		pointLightSample++;
 
 		myGLTextureViewer.setShaderProg(shaderProg[COPY_SHADER]);
-		glBindFramebuffer(GL_FRAMEBUFFER, accumulationFrameBuffer);
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[ACCUMULATION_FRAMEBUFFER]);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glViewport(0, 0, windowWidth, windowHeight);
 		myGLTextureViewer.drawTextureOnShader(textures[TEMP_ACCUMULATION_MAP_COLOR], windowWidth, windowHeight);
@@ -327,9 +336,36 @@ void display()
 		
 	}
 	
-	displaySceneFromCameraPOV(shaderProg[RENDER_SHADER]);
+	pointLightSample = -1;
 	
-	pointLightSample = 0;
+	displaySceneFromCameraPOV(shaderProg[MONTE_CARLO_RENDER_SHADER]);
+	
+}
+
+void renderPCSS() 
+{
+
+	glClearColor(1.0f, 1.0f, 1.0f, 1.0);
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[SHADOW_FRAMEBUFFER]);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	displaySceneFromLightPOV();
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_POLYGON_OFFSET_FILL);
+	
+	glClearColor(0.63f, 0.82f, 0.96f, 1.0);
+	displaySceneFromCameraPOV(shaderProg[PCSS_SHADER]);
+
+}
+
+void display()
+{
+	
+	if(shadowParams.monteCarlo)
+		renderMonteCarlo();
+	else if(shadowParams.PCSS)
+		renderPCSS();
 
 	glutSwapBuffers();
 	glutPostRedisplay();
@@ -388,6 +424,10 @@ void specialKeyboard(int key, int x, int y)
 			lightTranslationVector[1] += 5 * vel;
 		if(shadowIntensityOn)
 			shadowParams.shadowIntensity += 0.05;
+		if(changeKernelSizeOn)
+			shadowParams.kernelSize++;
+		if(changeBlockerSearchSizeOn)
+			shadowParams.blockerSearchSize++;
 		break;
 	case GLUT_KEY_DOWN:
 		if(cameraOn) {
@@ -411,6 +451,10 @@ void specialKeyboard(int key, int x, int y)
 			lightTranslationVector[1] -= 5 * vel;
 		if(shadowIntensityOn)
 			shadowParams.shadowIntensity -= 0.05;
+		if(changeKernelSizeOn)
+			shadowParams.kernelSize--;
+		if(changeBlockerSearchSizeOn)
+			shadowParams.blockerSearchSize--;
 		break;
 	case GLUT_KEY_LEFT:
 		if(cameraOn) {
@@ -496,6 +540,13 @@ void specialKeyboard(int key, int x, int y)
 
 }
 
+void resetShadowParameters() {
+	
+	shadowParams.monteCarlo = false;
+	shadowParams.PCSS = false;
+
+}
+
 void transformationMenu(int id) {
 
 	switch(id)
@@ -538,8 +589,8 @@ void otherFunctionsMenu(int id) {
 			shadowIntensityOn = !shadowIntensityOn;
 			break;
 		case 2:
-			printf("LightPosition: %f %f %f\n", lightSource->getEye()[0], lightSource->getEye()[1], lightSource->getEye()[2]);
-			printf("LightAt: %f %f %f\n", lightSource->getAt()[0], lightSource->getAt()[1], lightSource->getAt()[2]);
+			printf("LightPosition: %f %f %f\n", lightSource->getEye(pointLightSample)[0], lightSource->getEye(pointLightSample)[1], lightSource->getEye(pointLightSample)[2]);
+			printf("LightAt: %f %f %f\n", lightSource->getAt(pointLightSample)[0], lightSource->getAt(pointLightSample)[1], lightSource->getAt(pointLightSample)[2]);
 			printf("CameraPosition: %f %f %f\n", cameraEye[0], cameraEye[1], cameraEye[2]);
 			printf("CameraAt: %f %f %f\n", cameraAt[0], cameraAt[1], cameraAt[2]);
 			printf("Global Translation: %f %f %f\n", translationVector[0], translationVector[1], translationVector[2]);
@@ -549,14 +600,46 @@ void otherFunctionsMenu(int id) {
 
 }
 
+void softShadowMenu(int id) {
+
+	switch(id) {
+	case 0:
+		resetShadowParameters();
+		shadowParams.monteCarlo = true;
+		break;
+	case 1:
+		resetShadowParameters();
+		shadowParams.PCSS = true;
+		break;
+	}
+}
+
+void softShadowParametersMenu(int id) {
+
+	switch(id) {
+	case 0:
+		changeKernelSizeOn = !changeKernelSizeOn;
+		break;
+	case 1:
+		changeBlockerSearchSizeOn = !changeBlockerSearchSizeOn;
+		break;
+	}
+
+}
+
 void mainMenu(int id) {
 
 	
+
 }
 
 void createMenu() {
 
-	GLint transformationMenuID, otherFunctionsMenuID;
+	GLint softShadowMenuID, transformationMenuID, softShadowParametersMenuID, otherFunctionsMenuID;
+
+	softShadowMenuID = glutCreateMenu(softShadowMenu);
+		glutAddMenuEntry("Monte-Carlo Sampling", 0);
+		glutAddMenuEntry("Percentage-Closer Soft Shadow Mapping", 1);
 
 	transformationMenuID = glutCreateMenu(transformationMenu);
 		glutAddMenuEntry("Translation", 0);
@@ -564,13 +647,18 @@ void createMenu() {
 		glutAddMenuEntry("Light Translation [On/Off]", 2);
 		glutAddMenuEntry("Camera Movement [On/Off]", 3);
 
+	softShadowParametersMenuID = glutCreateMenu(softShadowParametersMenu);
+		glutAddMenuEntry("Change Kernel Size", 0);
+		glutAddMenuEntry("Change Blocker Search Size", 1);
+
 	otherFunctionsMenuID = glutCreateMenu(otherFunctionsMenu);
 		glutAddMenuEntry("Animation [On/Off]", 0);
 		glutAddMenuEntry("Shadow Intensity [On/Off]", 1);
 		glutAddMenuEntry("Print Data", 2);
 		
 	glutCreateMenu(mainMenu);
-		glutAddMenuEntry("Soft Shadow Mapping", 0);
+		glutAddSubMenu("Soft Shadow Mapping", softShadowMenuID);
+		glutAddSubMenu("Soft Shadow Parameters", softShadowParametersMenuID);
 		glutAddSubMenu("Transformation", transformationMenuID);
 		glutAddSubMenu("Other Functions", otherFunctionsMenuID);
 		glutAttachMenu(GLUT_RIGHT_BUTTON);
@@ -584,17 +672,9 @@ void initGL(char *configurationFile) {
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);  
 
 	if(textures[0] == 0)
-		glGenTextures(10, textures);
-	if(shadowFrameBuffer == 0)
-		glGenFramebuffers(1, &shadowFrameBuffer);
-	if(accumulationFrameBuffer == 0)
-		glGenFramebuffers(1, &accumulationFrameBuffer);
-	if(tempAccumulationFrameBuffer == 0)
-		glGenFramebuffers(1, &tempAccumulationFrameBuffer);
-	if(vertexFrameBuffer == 0)
-		glGenFramebuffers(1, &vertexFrameBuffer);
-	if(normalFrameBuffer == 0)
-		glGenFramebuffers(1, &normalFrameBuffer);
+		glGenTextures(20, textures);
+	if(frameBuffer[0] == 0)
+		glGenFramebuffers(10, frameBuffer);
 	if(sceneVBO[0] == 0)
 		glGenBuffers(5, sceneVBO);
 	if(sceneTextures[0] == 0)
@@ -615,12 +695,17 @@ void initGL(char *configurationFile) {
 	lightSource->setSize(32.0);
 	lightSource->setNumberOfPointLights(64.0);
 
+	resetShadowParameters();
+	shadowParams.PCSS = true;
 	shadowParams.shadowMapWidth = shadowMapWidth;
 	shadowParams.shadowMapHeight = shadowMapHeight;
 	shadowParams.windowWidth = windowWidth;
 	shadowParams.windowHeight = windowHeight;
 	shadowParams.shadowIntensity = 0.25;
-	shadowParams.accFactor = 1.0/64.0;
+	shadowParams.accFactor = 1.0/lightSource->getNumberOfPointLights();
+	shadowParams.blockerSearchSize = 32;
+	shadowParams.kernelSize = 4;
+	shadowParams.lightSourceRadius = lightSource->getSize()/2;
 
 	myGLTextureViewer.loadQuad();
 	createMenu();
@@ -641,27 +726,27 @@ void initGL(char *configurationFile) {
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, VERTEX_MAP_DEPTH, windowWidth, windowHeight);
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, NORMAL_MAP_DEPTH, windowWidth, windowHeight);
 	
-	glBindFramebuffer(GL_FRAMEBUFFER, shadowFrameBuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[SHADOW_FRAMEBUFFER]);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[SHADOW_MAP_DEPTH], 0);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[SHADOW_MAP_COLOR], 0);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	glBindFramebuffer(GL_FRAMEBUFFER, accumulationFrameBuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[ACCUMULATION_FRAMEBUFFER]);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[ACCUMULATION_MAP_DEPTH], 0);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[ACCUMULATION_MAP_COLOR], 0);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	glBindFramebuffer(GL_FRAMEBUFFER, tempAccumulationFrameBuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_ACCUMULATION_FRAMEBUFFER]);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[TEMP_ACCUMULATION_MAP_DEPTH], 0);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[TEMP_ACCUMULATION_MAP_COLOR], 0);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	glBindFramebuffer(GL_FRAMEBUFFER, vertexFrameBuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[VERTEX_FRAMEBUFFER]);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[VERTEX_MAP_DEPTH], 0);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[VERTEX_MAP_COLOR], 0);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	glBindFramebuffer(GL_FRAMEBUFFER, normalFrameBuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[NORMAL_FRAMEBUFFER]);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[NORMAL_MAP_DEPTH], 0);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[NORMAL_MAP_COLOR], 0);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -688,9 +773,10 @@ int main(int argc, char **argv) {
 	initShader("Shaders/MonteCarlo/Shadow", SHADOW_SHADER);
 	initShader("Shaders/MonteCarlo/Clear", CLEAR_SHADER);
 	initShader("Shaders/MonteCarlo/Copy", COPY_SHADER);
-	initShader("Shaders/MonteCarlo/Render", RENDER_SHADER);
+	initShader("Shaders/MonteCarlo/Render", MONTE_CARLO_RENDER_SHADER);
 	initShader("Shaders/MonteCarlo/Vertex", GBUFFER_VERTEX_SHADER);
 	initShader("Shaders/MonteCarlo/Normal", GBUFFER_NORMAL_SHADER);
+	initShader("Shaders/PCSS", PCSS_SHADER);
 	glUseProgram(0); 
 
 	glutMainLoop();
