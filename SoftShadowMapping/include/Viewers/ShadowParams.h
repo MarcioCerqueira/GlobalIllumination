@@ -19,7 +19,10 @@ typedef struct ShadowParams
 	float accFactor;
 	bool monteCarlo;
 	bool PCSS;
+	bool SAVSM;
+	bool SATDisabled; 
 	GLuint shadowMap;
+	GLuint SATShadowMap;
 	GLuint accumulationMap;
 	GLuint vertexMap;
 	GLuint normalMap;
