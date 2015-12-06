@@ -6,7 +6,9 @@
 //G-Buffer - T. Saito and T. Takahashi. Comprehensible Rendering of 3-D Shapes. 1990.
 //Percentage-Closer Soft Shadows - R. Fernando. Percentage-Closer Soft Shadows. 2005.
 //Summed-Area Tables in GPU - J. Hensley et al. Fast Summed-Area Table Generation and Its Applications. 2005
+//Hierarchical Shadow Map - G. Guennebaud et al. Real-Time Soft Shadow Mapping by Backprojection. 2006
 //Summed-Area Variance Shadow Mapping - A. Lauritzen. Summed-Area Variance Shadow Maps. 2007.
+//Variance Soft Shadow Mapping - B. Yang et al. Variance Soft Shadow Mapping. 2010
 //http://rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling/ for gaussian mask weights
 //http://www.3drender.com/challenges/ (.obj, .mtl)
 //http://graphics.cs.williams.edu/data/meshes.xml (.obj, .mtl)
@@ -26,7 +28,6 @@
 #include "Image.h"
 #include "Filter.h"
 
-
 enum 
 {
 	SHADOW_MAP_DEPTH = 0,
@@ -35,14 +36,15 @@ enum
 	TEMP_SHADOW_MAP_COLOR = 3,
 	SAT_SHADOW_MAP_DEPTH = 4,
 	SAT_SHADOW_MAP_COLOR = 5,
-	ACCUMULATION_MAP_DEPTH = 6,
-	ACCUMULATION_MAP_COLOR = 7,
-	TEMP_ACCUMULATION_MAP_DEPTH = 8,
-	TEMP_ACCUMULATION_MAP_COLOR = 9,
-	VERTEX_MAP_DEPTH = 10,
-	VERTEX_MAP_COLOR = 11,
-	NORMAL_MAP_DEPTH = 12,
-	NORMAL_MAP_COLOR = 13
+	HIERARCHICAL_SHADOW_MAP_DEPTH = 6,
+	HIERARCHICAL_SHADOW_MAP_COLOR = 7,
+	ACCUMULATION_MAP_DEPTH = 8,
+	ACCUMULATION_MAP_COLOR = 9,
+	TEMP_ACCUMULATION_MAP_DEPTH = 10,
+	TEMP_ACCUMULATION_MAP_COLOR = 11,
+	GBUFFER_MAP_DEPTH = 12,
+	VERTEX_MAP_COLOR = 13,
+	NORMAL_MAP_COLOR = 15
 };
 
 enum
@@ -52,13 +54,13 @@ enum
 	CLEAR_SHADER = 2,
 	COPY_SHADER = 3,
 	MONTE_CARLO_RENDER_SHADER = 4,
-	GBUFFER_VERTEX_SHADER = 5,
-	GBUFFER_NORMAL_SHADER = 6,
-	PCSS_SHADER = 7,
-	MOMENT_SHADER = 8,
-	SAVSM_SHADER = 9,
-	SAT_HORIZONTAL_PASS_SHADER = 10,
-	SAT_VERTICAL_PASS_SHADER = 11
+	GBUFFER_SHADER = 5,
+	SOFT_SHADOW_SHADER = 6,
+	MOMENT_SHADER = 7,
+	SAT_HORIZONTAL_PASS_SHADER = 8,
+	SAT_VERTICAL_PASS_SHADER = 9,
+	PREPARE_MIN_MAX_SHADER = 10,
+	MIN_MAX_SHADER = 11
 };
 
 enum
@@ -66,10 +68,10 @@ enum
 	SHADOW_FRAMEBUFFER = 0,
 	TEMP_SHADOW_FRAMEBUFFER = 1,
 	SAT_SHADOW_FRAMEBUFFER = 2,
-	ACCUMULATION_FRAMEBUFFER = 3,
-	TEMP_ACCUMULATION_FRAMEBUFFER = 4,
-	VERTEX_FRAMEBUFFER = 5,
-	NORMAL_FRAMEBUFFER = 6
+	HIERARCHICAL_SHADOW_FRAMEBUFFER = 3,
+	ACCUMULATION_FRAMEBUFFER = 4,
+	TEMP_ACCUMULATION_FRAMEBUFFER = 5,
+	GBUFFER_FRAMEBUFFER = 6
 };
 
 bool temp = false;
@@ -199,7 +201,7 @@ void displaySceneFromLightPOV()
 	
 	updateLight();
 
-	if(shadowParams.SAVSM) {
+	if(shadowParams.SAVSM || shadowParams.VSSM) {
 		glUseProgram(shaderProg[MOMENT_SHADER]);
 		myGLGeometryViewer.setShaderProg(shaderProg[MOMENT_SHADER]);
 		myGLGeometryViewer.configureLinearization();
@@ -247,12 +249,14 @@ void displaySceneFromCameraPOV(GLuint shader)
 	glUseProgram(shader);
 	myGLGeometryViewer.setShaderProg(shader);
 	shadowParams.shadowMap = textures[SHADOW_MAP_DEPTH];
-	if(shadowParams.SAVSM)
-		if(shadowParams.SATDisabled)
-			shadowParams.SATShadowMap = textures[SHADOW_MAP_COLOR];
-		else
+	if(shadowParams.SAVSM || shadowParams.VSSM) {
+		if(shadowParams.SAT)
 			shadowParams.SATShadowMap = textures[SAT_SHADOW_MAP_COLOR];
-	else if(shadowParams.monteCarlo) 
+		else
+			shadowParams.SATShadowMap = textures[SHADOW_MAP_COLOR];
+		if(shadowParams.VSSM)
+			shadowParams.hierarchicalShadowMap = textures[HIERARCHICAL_SHADOW_MAP_COLOR];
+	} else if(shadowParams.monteCarlo) 
 		shadowParams.accumulationMap = textures[ACCUMULATION_MAP_COLOR];
 	
 	shadowParams.lightMVP = lightMVP;
@@ -324,14 +328,9 @@ void renderMonteCarlo()
 	pointLightSample = -1;
 
 	glClearColor(0.63f, 0.82f, 0.96f, 1.0);
-	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[VERTEX_FRAMEBUFFER]);
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[GBUFFER_FRAMEBUFFER]);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	displaySceneFromCameraPOV(shaderProg[GBUFFER_VERTEX_SHADER]);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		
-	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[NORMAL_FRAMEBUFFER]);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	displaySceneFromCameraPOV(shaderProg[GBUFFER_NORMAL_SHADER]);
+	displaySceneFromCameraPOV(shaderProg[GBUFFER_SHADER]);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	
 	pointLightSample = 0;
@@ -370,69 +369,106 @@ void renderMonteCarlo()
 	
 }
 
-void renderPCSS() 
+void renderSoftShadows() 
 {
 
-	glClearColor(1.0f, 1.0f, 1.0f, 1.0);
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0);
 	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[SHADOW_FRAMEBUFFER]);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	displaySceneFromLightPOV();
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	
-	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[ACCUMULATION_FRAMEBUFFER]);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	displaySceneFromGBuffer();
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		
-	glDisable(GL_CULL_FACE);
-	glDisable(GL_POLYGON_OFFSET_FILL);
+	glBindTexture(GL_TEXTURE_2D, textures[SHADOW_MAP_COLOR]);
+	glGenerateMipmap(GL_TEXTURE_2D);
+
+	if(shadowParams.SAT) {
 	
-	glClearColor(0.63f, 0.82f, 0.96f, 1.0);
-	displaySceneFromCameraPOV(shaderProg[PCSS_SHADER]);
+		int m = std::logf(shadowMapWidth)/std::logf(2);
+		for(int iteration = 0; iteration < m; iteration++) {
 
-}
+			glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glViewport(0, 0, shadowMapWidth, shadowMapHeight);
+			myGLTextureViewer.setShaderProg(shaderProg[SAT_HORIZONTAL_PASS_SHADER]);
+			glUseProgram(shaderProg[SAT_HORIZONTAL_PASS_SHADER]);
+			glUniform1i(glGetUniformLocation(shaderProg[SAT_HORIZONTAL_PASS_SHADER], "iteration"), iteration);
+			if(iteration == 0)
+				myGLTextureViewer.drawTextureOnShader(textures[SHADOW_MAP_COLOR], shadowMapWidth, shadowMapHeight);
+			else
+				myGLTextureViewer.drawTextureOnShader(textures[SAT_SHADOW_MAP_COLOR], shadowMapWidth, shadowMapHeight);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-void renderSAVSM()
-{
-
-	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[SHADOW_FRAMEBUFFER]);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	displaySceneFromLightPOV();
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	
-	int m = std::logf(shadowMapWidth)/std::logf(2);
-	for(int iteration = 0; iteration < m; iteration++) {
-
-		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		glViewport(0, 0, shadowMapWidth, shadowMapHeight);
-		myGLTextureViewer.setShaderProg(shaderProg[SAT_HORIZONTAL_PASS_SHADER]);
-		glUseProgram(shaderProg[SAT_HORIZONTAL_PASS_SHADER]);
-		glUniform1i(glGetUniformLocation(shaderProg[SAT_HORIZONTAL_PASS_SHADER], "iteration"), iteration);
-		if(iteration == 0)
-			myGLTextureViewer.drawTextureOnShader(textures[SHADOW_MAP_COLOR], shadowMapWidth, shadowMapHeight);
-		else
-			myGLTextureViewer.drawTextureOnShader(textures[SAT_SHADOW_MAP_COLOR], shadowMapWidth, shadowMapHeight);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[SAT_SHADOW_FRAMEBUFFER]);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		glViewport(0, 0, shadowMapWidth, shadowMapHeight);
-		myGLTextureViewer.setShaderProg(shaderProg[SAT_VERTICAL_PASS_SHADER]);
-		glUseProgram(shaderProg[SAT_VERTICAL_PASS_SHADER]);
-		glUniform1i(glGetUniformLocation(shaderProg[SAT_VERTICAL_PASS_SHADER], "iteration"), iteration);
-		myGLTextureViewer.drawTextureOnShader(textures[TEMP_SHADOW_MAP_COLOR], shadowMapWidth, shadowMapHeight);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[SAT_SHADOW_FRAMEBUFFER]);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glViewport(0, 0, shadowMapWidth, shadowMapHeight);
+			myGLTextureViewer.setShaderProg(shaderProg[SAT_VERTICAL_PASS_SHADER]);
+			glUseProgram(shaderProg[SAT_VERTICAL_PASS_SHADER]);
+			glUniform1i(glGetUniformLocation(shaderProg[SAT_VERTICAL_PASS_SHADER], "iteration"), iteration);
+			myGLTextureViewer.drawTextureOnShader(textures[TEMP_SHADOW_MAP_COLOR], shadowMapWidth, shadowMapHeight);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			
+		}
 		
 	}
 
+	if(shadowParams.VSSM) {
+			
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HIERARCHICAL_SHADOW_FRAMEBUFFER]);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[HIERARCHICAL_SHADOW_MAP_DEPTH], 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[HIERARCHICAL_SHADOW_MAP_COLOR], 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			
+		myGLTextureViewer.setShaderProg(shaderProg[PREPARE_MIN_MAX_SHADER]);
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HIERARCHICAL_SHADOW_FRAMEBUFFER]);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glViewport(0, 0, shadowMapWidth, shadowMapHeight);
+		myGLTextureViewer.drawTextureOnShader(textures[SHADOW_MAP_COLOR], shadowMapWidth, shadowMapHeight);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			
+		int m = std::logf(shadowMapWidth)/std::logf(2);
+		for(int iteration = 1; iteration < m; iteration++) {
+
+			glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HIERARCHICAL_SHADOW_FRAMEBUFFER]);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[HIERARCHICAL_SHADOW_MAP_DEPTH], 0);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[HIERARCHICAL_SHADOW_MAP_COLOR], iteration);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_DEPTH], 0);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_COLOR], iteration);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			myGLTextureViewer.setShaderProg(shaderProg[MIN_MAX_SHADER]);
+			glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glViewport(0, 0, shadowMapWidth/powf(2, iteration), shadowMapHeight/powf(2, iteration));
+			myGLTextureViewer.drawTextureOnShader(textures[HIERARCHICAL_SHADOW_MAP_COLOR], shadowMapWidth/powf(2, iteration), shadowMapHeight/powf(2, iteration));
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				
+			myGLTextureViewer.setShaderProg(shaderProg[COPY_SHADER]);
+			glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HIERARCHICAL_SHADOW_FRAMEBUFFER]);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glViewport(0, 0, shadowMapWidth/powf(2, iteration), shadowMapHeight/powf(2, iteration));
+			myGLTextureViewer.drawTextureOnShader(textures[TEMP_SHADOW_MAP_COLOR], shadowMapWidth/powf(2, iteration), shadowMapHeight/powf(2, iteration));
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				
+		}
+		
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_DEPTH], 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_COLOR], 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	}
+		
+		
+	
 	glDisable(GL_CULL_FACE);
 	glDisable(GL_POLYGON_OFFSET_FILL);
 	
 	glClearColor(0.63f, 0.82f, 0.96f, 1.0);
-	displaySceneFromCameraPOV(shaderProg[SAVSM_SHADER]);
-
+	displaySceneFromCameraPOV(shaderProg[SOFT_SHADOW_SHADER]);
+	
 }
 
 void display()
@@ -440,10 +476,8 @@ void display()
 	
 	if(shadowParams.monteCarlo)
 		renderMonteCarlo();
-	else if(shadowParams.PCSS)
-		renderPCSS();
-	else if(shadowParams.SAVSM)
-		renderSAVSM();
+	else
+		renderSoftShadows();
 
 	glutSwapBuffers();
 	glutPostRedisplay();
@@ -472,7 +506,7 @@ void keyboard(unsigned char key, int x, int y)
 		exit(0);
 		break;
 	case 's':
-		shadowParams.SATDisabled = !shadowParams.SATDisabled;
+		shadowParams.SAT = !shadowParams.SAT;
 		break;
 	}
 
@@ -626,6 +660,7 @@ void resetShadowParameters() {
 	shadowParams.monteCarlo = false;
 	shadowParams.PCSS = false;
 	shadowParams.SAVSM = false;
+	shadowParams.VSSM = false;
 
 }
 
@@ -692,10 +727,15 @@ void softShadowMenu(int id) {
 	case 1:
 		resetShadowParameters();
 		shadowParams.PCSS = true;
+		shadowParams.SAT = false;
 		break;
 	case 2:
 		resetShadowParameters();
 		shadowParams.SAVSM = true;
+		break;
+	case 3:
+		resetShadowParameters();
+		shadowParams.VSSM = true;
 		break;
 	}
 }
@@ -727,6 +767,7 @@ void createMenu() {
 		glutAddMenuEntry("Monte-Carlo Sampling", 0);
 		glutAddMenuEntry("Percentage-Closer Soft Shadow Mapping", 1);
 		glutAddMenuEntry("Summed-Area Variance Shadow Mapping", 2);
+		glutAddMenuEntry("Variance Soft Shadow Mapping", 3);
 
 	transformationMenuID = glutCreateMenu(transformationMenu);
 		glutAddMenuEntry("Translation", 0);
@@ -783,16 +824,16 @@ void initGL(char *configurationFile) {
 	lightSource->setNumberOfPointLights(64.0);
 
 	resetShadowParameters();
-	shadowParams.SAVSM = true;
-	shadowParams.SATDisabled = true;
+	shadowParams.VSSM = true;
+	shadowParams.SAT = false;
 	shadowParams.shadowMapWidth = shadowMapWidth;
 	shadowParams.shadowMapHeight = shadowMapHeight;
 	shadowParams.windowWidth = windowWidth;
 	shadowParams.windowHeight = windowHeight;
 	shadowParams.shadowIntensity = 0.25;
 	shadowParams.accFactor = 1.0/lightSource->getNumberOfPointLights();
-	shadowParams.blockerSearchSize = 5;
-	shadowParams.kernelSize = 5;
+	shadowParams.blockerSearchSize = 8;
+	shadowParams.kernelSize = 16;
 	shadowParams.lightSourceRadius = lightSource->getSize()/2;
 
 	myGLTextureViewer.loadQuad();
@@ -801,22 +842,23 @@ void initGL(char *configurationFile) {
 	if(scene->textureFromImage())
 		for(int num = 0; num < scene->getNumberOfTextures(); num++)
 			myGLTextureViewer.loadRGBTexture(scene->getTexture()[num]->getData(), sceneTextures, num, scene->getTexture()[num]->getWidth(), scene->getTexture()[num]->getHeight());
-	
+
 	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, SHADOW_MAP_COLOR, shadowMapWidth, shadowMapHeight);
 	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, TEMP_SHADOW_MAP_COLOR, shadowMapWidth, shadowMapHeight);
 	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, SAT_SHADOW_MAP_COLOR, shadowMapWidth, shadowMapHeight);
+	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, HIERARCHICAL_SHADOW_MAP_COLOR, shadowMapWidth, shadowMapHeight);
 	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, ACCUMULATION_MAP_COLOR, windowWidth, windowHeight);
 	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, TEMP_ACCUMULATION_MAP_COLOR, windowWidth, windowHeight, GL_NEAREST);
 	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, VERTEX_MAP_COLOR, windowWidth, windowHeight, GL_NEAREST);
 	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, NORMAL_MAP_COLOR, windowWidth, windowHeight, GL_NEAREST);
-	
+
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, SHADOW_MAP_DEPTH, shadowMapWidth, shadowMapHeight);
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, TEMP_SHADOW_MAP_DEPTH, shadowMapWidth, shadowMapHeight);
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, SAT_SHADOW_MAP_DEPTH, shadowMapWidth, shadowMapHeight);
+	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, HIERARCHICAL_SHADOW_MAP_DEPTH, shadowMapWidth, shadowMapHeight);
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, ACCUMULATION_MAP_DEPTH, windowWidth, windowHeight);
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, TEMP_ACCUMULATION_MAP_DEPTH, windowWidth, windowHeight);
-	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, VERTEX_MAP_DEPTH, windowWidth, windowHeight);
-	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, NORMAL_MAP_DEPTH, windowWidth, windowHeight);
+	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, GBUFFER_MAP_DEPTH, windowWidth, windowHeight);
 	
 	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[SHADOW_FRAMEBUFFER]);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[SHADOW_MAP_DEPTH], 0);
@@ -843,14 +885,14 @@ void initGL(char *configurationFile) {
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[TEMP_ACCUMULATION_MAP_COLOR], 0);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[VERTEX_FRAMEBUFFER]);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[VERTEX_MAP_DEPTH], 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[GBUFFER_FRAMEBUFFER]);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[GBUFFER_MAP_DEPTH], 0);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[VERTEX_MAP_COLOR], 0);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[NORMAL_FRAMEBUFFER]);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[NORMAL_MAP_DEPTH], 0);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[NORMAL_MAP_COLOR], 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, textures[NORMAL_MAP_COLOR], 0);
+	GLenum bufs[2];
+	bufs[0] = GL_COLOR_ATTACHMENT0;
+	bufs[1] = GL_COLOR_ATTACHMENT1;
+	glDrawBuffers(2,bufs);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 }
@@ -876,13 +918,13 @@ int main(int argc, char **argv) {
 	initShader("Shaders/MonteCarlo/Clear", CLEAR_SHADER);
 	initShader("Shaders/MonteCarlo/Copy", COPY_SHADER);
 	initShader("Shaders/MonteCarlo/Render", MONTE_CARLO_RENDER_SHADER);
-	initShader("Shaders/MonteCarlo/Vertex", GBUFFER_VERTEX_SHADER);
-	initShader("Shaders/MonteCarlo/Normal", GBUFFER_NORMAL_SHADER);
-	initShader("Shaders/PCSS", PCSS_SHADER);
+	initShader("Shaders/MonteCarlo/GBuffer", GBUFFER_SHADER);
+	initShader("Shaders/SoftShadow", SOFT_SHADOW_SHADER);
 	initShader("Shaders/Moments/Moments", MOMENT_SHADER);
-	initShader("Shaders/Moments/SAVSM", SAVSM_SHADER);
 	initShader("Shaders/Moments/SATHorizontalPass", SAT_HORIZONTAL_PASS_SHADER);
 	initShader("Shaders/Moments/SATVerticalPass", SAT_VERTICAL_PASS_SHADER);
+	initShader("Shaders/Moments/PrepareMinMax", PREPARE_MIN_MAX_SHADER);
+	initShader("Shaders/Moments/MinMax", MIN_MAX_SHADER);
 	glUseProgram(0); 
 
 	glutMainLoop();

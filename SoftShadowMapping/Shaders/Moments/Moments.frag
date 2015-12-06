@@ -34,11 +34,10 @@ void main()
 	vec4 moment;
 
 	moment.x = depth - 0.5;
-	moment.y = depth * depth + 0.25 * (dx * dx + dy * dy);
+	moment.y = depth * depth + 0.25 * (dx * dx + dy * dy) - 0.5;
 	moment.z = 0.0;
 	moment.w = 0.0;
 	
-	moment = distributePrecision(moment.xy);
+	//moment = distributePrecision(moment.xy);
 	gl_FragColor = moment;
-
 }

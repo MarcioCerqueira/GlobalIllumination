@@ -122,8 +122,14 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glUniform1i(kernelSizeID, shadowParams.kernelSize);
 	GLuint lightSourceRadiusID = glGetUniformLocation(shaderProg, "lightSourceRadius");
 	glUniform1i(lightSourceRadiusID, shadowParams.lightSourceRadius);
-	GLuint SATDisabledID = glGetUniformLocation(shaderProg, "SATDisabled");
-	glUniform1i(SATDisabledID, shadowParams.SATDisabled);
+	GLuint SATID = glGetUniformLocation(shaderProg, "SAT");
+	glUniform1i(SATID, shadowParams.SAT);
+	GLuint PCSSID = glGetUniformLocation(shaderProg, "PCSS");
+	glUniform1i(PCSSID, shadowParams.PCSS);
+	GLuint SAVSMID = glGetUniformLocation(shaderProg, "SAVSM");
+	glUniform1i(SAVSMID, shadowParams.SAVSM);
+	GLuint VSSMID = glGetUniformLocation(shaderProg, "VSSM");
+	glUniform1i(VSSMID, shadowParams.VSSM);
 	GLuint shadowMap = glGetUniformLocation(shaderProg, "shadowMap");
 	glUniform1i(shadowMap, 0);
 
@@ -136,11 +142,15 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		GLuint normalMap = glGetUniformLocation(shaderProg, "normalMap");
 		glUniform1i(normalMap, 8);
 	
-	} else if(shadowParams.SAVSM) {
+	} else if(shadowParams.SAVSM || shadowParams.VSSM) {
 
 		GLuint SATShadowMap = glGetUniformLocation(shaderProg, "SATShadowMap");
 		glUniform1i(SATShadowMap, 1);
-		
+		if(shadowParams.VSSM) {
+			GLuint hierarchicalShadowMap = glGetUniformLocation(shaderProg, "hierarchicalShadowMap");
+			glUniform1i(hierarchicalShadowMap, 7);
+		}
+
 	}
 
 	configureLinearization();
@@ -159,10 +169,15 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		glActiveTexture(GL_TEXTURE8);
 		glBindTexture(GL_TEXTURE_2D, shadowParams.normalMap);
 		
-	} else if(shadowParams.SAVSM) {
+	} else if(shadowParams.SAVSM || shadowParams.VSSM) {
 
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, shadowParams.SATShadowMap);
+		
+		if(shadowParams.VSSM) {
+			glActiveTexture(GL_TEXTURE7);
+			glBindTexture(GL_TEXTURE_2D, shadowParams.hierarchicalShadowMap);
+		}
 
 	}
 
@@ -180,10 +195,15 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		glActiveTexture(GL_TEXTURE8);
 		glDisable(GL_TEXTURE_2D);
 
-	} else if(shadowParams.SAVSM) {
+	} else if(shadowParams.SAVSM || shadowParams.VSSM) {
 	
 		glActiveTexture(GL_TEXTURE1);
 		glDisable(GL_TEXTURE_2D);
+
+		if(shadowParams.VSSM) {
+			glActiveTexture(GL_TEXTURE7);
+			glDisable(GL_TEXTURE_2D);
+		}
 
 	}
 

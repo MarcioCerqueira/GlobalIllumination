@@ -1,12 +1,14 @@
 uniform mat4 MVP;
 attribute vec3 vertex;
 attribute vec3 normal;
-varying vec4 data;
+varying vec4 GBufferNormal;
+varying vec4 GBufferVertex;
 
 void main(void)
 {
 
 	gl_Position = MVP * vec4(vertex, 1);
-	data = vec4(normal, 1);
+	GBufferNormal = vec4(normal, 1);
+	GBufferVertex = vec4(vertex, 1);
 
 }

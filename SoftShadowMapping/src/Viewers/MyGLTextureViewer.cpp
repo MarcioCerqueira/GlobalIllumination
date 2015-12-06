@@ -73,6 +73,21 @@ void MyGLTextureViewer::loadRGBATexture(float *data, GLuint *texVBO, int index, 
 	
 }
 
+void MyGLTextureViewer::loadRGBATexture(int *data, GLuint *texVBO, int index, int imageWidth, int imageHeight, GLint param)
+{
+
+	glBindTexture(GL_TEXTURE_2D, texVBO[index]);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, param);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, param);
+	glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
+	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32I_EXT, imageWidth, imageHeight, 0, GL_RGBA_INTEGER_EXT, GL_INT, data);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	
+}
+
 void MyGLTextureViewer::loadFrameBufferTexture(int x, int y, int width, int height, unsigned char *frameBuffer) {
 
 	glReadPixels(x, y, width, height, GL_RGB, GL_UNSIGNED_BYTE, frameBuffer);
