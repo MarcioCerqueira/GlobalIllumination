@@ -21,6 +21,7 @@ typedef struct ShadowParams
 	bool PCSS;
 	bool SAVSM;
 	bool VSSM;
+	bool ESSM;
 	bool SAT; 
 	GLuint shadowMap;
 	GLuint SATShadowMap;

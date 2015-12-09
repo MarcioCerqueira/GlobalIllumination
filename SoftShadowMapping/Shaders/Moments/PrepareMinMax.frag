@@ -5,6 +5,12 @@ void main()
 {	
 
 	float shadow = texture2D(image, f_texcoord.st).x;
-	gl_FragColor = vec4(shadow + 0.001, shadow, 0.0, 1.0);
-	// 
+	float min, max;
+	max = shadow;
+	if(shadow == 0.0)
+		min = 1.0;
+	else
+		min = shadow;
+	gl_FragColor = vec4(min + 0.0001, max + 0.01, 0.0, 1.0);
+
 }

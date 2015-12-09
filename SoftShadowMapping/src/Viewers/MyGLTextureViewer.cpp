@@ -67,6 +67,7 @@ void MyGLTextureViewer::loadRGBATexture(float *data, GLuint *texVBO, int index, 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, param);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, param);
 	glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
+	
 	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, imageWidth, imageHeight, 0, GL_RGBA, GL_FLOAT, data);
 	glGenerateMipmap(GL_TEXTURE_2D);
@@ -176,7 +177,6 @@ void MyGLTextureViewer::drawTextureOnShader(GLuint texture, int imageWidth, int 
 	
 	glActiveTexture(GL_TEXTURE7);
 	glBindTexture(GL_TEXTURE_2D, texture);
-	glGenerateMipmap(GL_TEXTURE_2D);
 	  
 	drawTextureQuad();
 

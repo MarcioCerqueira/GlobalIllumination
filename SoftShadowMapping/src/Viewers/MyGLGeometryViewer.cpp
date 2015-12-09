@@ -130,6 +130,8 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glUniform1i(SAVSMID, shadowParams.SAVSM);
 	GLuint VSSMID = glGetUniformLocation(shaderProg, "VSSM");
 	glUniform1i(VSSMID, shadowParams.VSSM);
+	GLuint ESSMID = glGetUniformLocation(shaderProg, "ESSM");
+	glUniform1i(ESSMID, shadowParams.ESSM);
 	GLuint shadowMap = glGetUniformLocation(shaderProg, "shadowMap");
 	glUniform1i(shadowMap, 0);
 
@@ -142,7 +144,7 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		GLuint normalMap = glGetUniformLocation(shaderProg, "normalMap");
 		glUniform1i(normalMap, 8);
 	
-	} else if(shadowParams.SAVSM || shadowParams.VSSM) {
+	} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM) {
 
 		GLuint SATShadowMap = glGetUniformLocation(shaderProg, "SATShadowMap");
 		glUniform1i(SATShadowMap, 1);
@@ -169,7 +171,7 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		glActiveTexture(GL_TEXTURE8);
 		glBindTexture(GL_TEXTURE_2D, shadowParams.normalMap);
 		
-	} else if(shadowParams.SAVSM || shadowParams.VSSM) {
+	} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM) {
 
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, shadowParams.SATShadowMap);
@@ -195,7 +197,7 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		glActiveTexture(GL_TEXTURE8);
 		glDisable(GL_TEXTURE_2D);
 
-	} else if(shadowParams.SAVSM || shadowParams.VSSM) {
+	} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM) {
 	
 		glActiveTexture(GL_TEXTURE1);
 		glDisable(GL_TEXTURE_2D);

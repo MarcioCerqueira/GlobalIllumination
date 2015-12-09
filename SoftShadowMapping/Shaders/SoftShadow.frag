@@ -26,6 +26,7 @@ uniform int lightSourceRadius;
 uniform int PCSS;
 uniform int SAVSM;
 uniform int VSSM;
+uniform int ESSM;
 uniform int SAT;
 
 vec4 phong()
@@ -208,6 +209,65 @@ float computeAverageBlockerDepthBasedOnVSM(vec4 normalizedShadowCoord)
 
 }
 
+float computeAverageBlockerDepthBasedOnESM(vec4 normalizedShadowCoord)
+{
+	
+	float blockerSearchWidth = float(lightSourceRadius)/float(shadowMapWidth);
+	float stepSize = 2.0 * blockerSearchWidth/float(blockerSearchSize);
+	
+	int count = 0;
+	float averageDepth = 0.0;
+	float averageExponential = 0.0;
+	float zunocc = 0.0;
+	float zocc = 0.0;
+	float c = 80.0;
+	float probability = 0.0;
+	vec3 sum = vec3(0.0);
+	
+	if(SAT == 1) {
+ 
+		float div = 2.0 * blockerSearchWidth/stepSize;
+		float SATFilterSize = div / 2.0;
+
+		float xmax = normalizedShadowCoord.x + (div) * stepSize;
+		float xmin = normalizedShadowCoord.x - (div + 1.0) * stepSize;
+		float ymax = normalizedShadowCoord.y + (div) * stepSize;
+		float ymin = normalizedShadowCoord.y - (div + 1.0) * stepSize;
+	
+		vec3 A = texture2D(SATShadowMap, vec2(xmin, ymin)).xyz;
+		vec3 B = texture2D(SATShadowMap, vec2(xmax, ymin)).xyz;
+		vec3 C = texture2D(SATShadowMap, vec2(xmin, ymax)).xyz;
+		vec3 D = texture2D(SATShadowMap, vec2(xmax, ymax)).xyz;
+		vec3 sum = (D + A - B - C)/float(SATFilterSize * SATFilterSize);
+		
+		averageDepth = sum.x;
+		averageExponential = sum.y;
+		zunocc = sum.z;
+
+	} else {
+
+		for(float w = -blockerSearchWidth; w <= blockerSearchWidth; w += stepSize) {
+			for(float h = -blockerSearchWidth; h <= blockerSearchWidth; h += stepSize) {
+			
+				sum += texture2D(SATShadowMap, vec2(normalizedShadowCoord.xy + vec2(w, h))).xyz;		
+				count++;
+			
+			}
+		}
+	
+		averageDepth = sum.x / count;
+		averageExponential = sum.y / count;
+		zunocc = sum.z / count;
+
+	}
+
+	probability = exp(-c * linearize(normalizedShadowCoord.z)) * averageExponential;
+	if(probability > 0.95) return 1.0;
+	zocc = (averageDepth - exp(-c * linearize(normalizedShadowCoord.z)) * zunocc)/(1.0 - probability);
+	return nonLinearize(zocc);
+	
+}
+
 float computePenumbraWidth(float averageDepth, float distanceToLight)
 {
 
@@ -225,7 +285,7 @@ float PCF(float penumbraWidth, vec4 normalizedShadowCoord)
 		
 	if(stepSize <= 0.0 || stepSize >= 1.0)
 		return 1.0;
-		
+
 	for(float w = -penumbraWidth; w <= penumbraWidth; w += stepSize) {
 		for(float h = -penumbraWidth; h <= penumbraWidth; h += stepSize) {
 		
@@ -291,6 +351,62 @@ float VSM(float penumbraWidth, vec4 normalizedShadowCoord)
 
 }
 
+float ESM(float penumbraWidth, vec4 normalizedShadowCoord)
+{
+
+	float stepSize = 2.0 * penumbraWidth/float(kernelSize);
+	
+	if(stepSize <= 0.0 || stepSize >= 1.0)
+		return 1.0;
+	
+	float c = 80.0;
+	float averageExponential = 0.0;
+	
+	if(SAT == 1) {
+
+		float div = 2.0 * penumbraWidth/stepSize;
+		float SATFilterSize = div / 2.0;
+
+		float xmax = normalizedShadowCoord.x + (div) * stepSize;
+		float xmin = normalizedShadowCoord.x - (div + 1.0) * stepSize;
+		float ymax = normalizedShadowCoord.y + (div) * stepSize;
+		float ymin = normalizedShadowCoord.y - (div + 1.0) * stepSize;
+	
+		float A = texture2D(SATShadowMap, vec2(xmin, ymin)).y;
+		float B = texture2D(SATShadowMap, vec2(xmax, ymin)).y;
+		float C = texture2D(SATShadowMap, vec2(xmin, ymax)).y;
+		float D = texture2D(SATShadowMap, vec2(xmax, ymax)).y;
+		averageExponential = (D + A - B - C)/float(SATFilterSize * SATFilterSize);
+
+	} else {
+
+		int count = 0;
+		
+		for(float w = -penumbraWidth; w <= penumbraWidth; w += stepSize) {
+			for(float h = -penumbraWidth; h <= penumbraWidth; h += stepSize) {
+		
+				averageExponential += texture2D(SATShadowMap, vec2(normalizedShadowCoord.xy + vec2(w, h))).y;
+				count++;
+
+			}
+		}
+	
+		averageExponential /= count;
+	
+	}
+	
+	float distanceFromLight = texture2D(SATShadowMap, vec2(normalizedShadowCoord.xy)).x + 0.0001;
+	float visibility = exp(-c * linearize(normalizedShadowCoord.z)) * averageExponential;
+	visibility = clamp(visibility, shadowIntensity, 1.0);
+	
+	//Returns 1.0 for "non-planarity" kernel
+	if(distanceFromLight > linearize(normalizedShadowCoord.z) && visibility == shadowIntensity)
+		return 1.0;
+	else
+		return visibility;
+
+}
+
 float computeVisibilityFromHSM(float penumbraWidth, vec4 normalizedShadowCoord) 
 {
 
@@ -298,6 +414,7 @@ float computeVisibilityFromHSM(float penumbraWidth, vec4 normalizedShadowCoord)
 	vec2 minMax = recombinePrecision(texture2DLod(hierarchicalShadowMap, normalizedShadowCoord.xy, mipLevel)).xy + 0.5;
 	
 	if(normalizedShadowCoord.z <= nonLinearize(minMax.x)) return 1.0;
+	else if(normalizedShadowCoord.z > nonLinearize(minMax.y)) return shadowIntensity;
 	else return 0.555;
 
 }
@@ -328,8 +445,17 @@ float varianceSoftShadowMapping(vec4 normalizedShadowCoord)
 	float visibility = computeVisibilityFromHSM(penumbraWidth, normalizedShadowCoord);
 	if(visibility != shadowIntensity && visibility != 1.0)
 		visibility = VSM(penumbraWidth, normalizedShadowCoord);
-	
 	return visibility;
+
+}
+
+float exponentialSoftShadowMapping(vec4 normalizedShadowCoord)
+{
+		
+
+	float averageDepth = computeAverageBlockerDepthBasedOnESM(normalizedShadowCoord);
+	float penumbraWidth = computePenumbraWidth(averageDepth, normalizedShadowCoord.z);
+	return ESM(penumbraWidth, normalizedShadowCoord);
 	
 }
 
@@ -349,6 +475,8 @@ void main()
 			shadow = summedAreaVarianceShadowMapping(normalizedShadowCoord);
 		else if(VSSM == 1)
 			shadow = varianceSoftShadowMapping(normalizedShadowCoord);
+		else if(ESSM == 1)
+			shadow = exponentialSoftShadowMapping(normalizedShadowCoord);
 			
 	}
 

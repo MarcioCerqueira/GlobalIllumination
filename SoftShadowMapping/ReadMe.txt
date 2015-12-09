@@ -21,3 +21,5 @@ It was implemented based on the following papers:
 	- Summed-Area Variance Shadow Mapping proposed in "Summed-Area Variance Shadow Mapping" by A. Lauritzen in 2007;
 
 	- Variance Soft Shadow Mapping proposed in "Variance Soft Shadow Mapping" by B. Yang et al. in 2010;
+
+	- Exponential Soft Shadow Mapping proposed in "Exponential Soft Shadow Mapping" by L. Shen et al. in 2013;
