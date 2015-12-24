@@ -1,0 +1,26 @@
+o OBJ/SanDiego/building.obj
+s 30.0 30.0 30.0
+t -10.0 -8.0 0.0
+r 0.0 90.0 0.0
+c 1.0 1.0 0.5
++
+o OBJ/SanDiego/sphere.obj
+m OBJ/SanDiego/metal.png
+s 1.5 1.5 1.5
+t 1.5 -8.0 6.0
++
+o OBJ/SanDiego/sphere.obj
+m OBJ/SanDiego/metal.png
+s 1.5 1.5 1.5
+t -2.5 -8.0 6.0
++
+o OBJ/SanDiego/plane.obj
+m OBJ/SanDiego/white.png
+s 60.0 1.0 40.0
+t 0.0 -8.0 0.0
++
+ve 0.0 41.0 -50.0
+va 0.0 16.0 -10.0
+le 10.0 130.0 100.0
+la 0.0 0.0 0.0
+d 0.000025
