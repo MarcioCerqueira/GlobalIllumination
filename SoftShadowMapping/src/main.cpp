@@ -10,6 +10,7 @@
 //Summed-Area Variance Shadow Mapping - A. Lauritzen. Summed-Area Variance Shadow Maps. 2007.
 //Variance Soft Shadow Mapping - B. Yang et al. Variance Soft Shadow Mapping. 2010.
 //Exponential Soft Shadow Mapping - L. Shen et al. Exponential Soft Shadow Mapping. 2013.
+//Moment Soft Shadow Mapping - C. Peters et al. Beyond Hard Shadows: Moment Shadow Maps for Single Scattering, Soft Shadows and Translucent Occluders. 2016.
 //http://rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling/ for gaussian mask weights
 //http://www.3drender.com/challenges/ (.obj, .mtl)
 //http://graphics.cs.williams.edu/data/meshes.xml (.obj, .mtl)
@@ -203,9 +204,10 @@ void displaySceneFromLightPOV()
 	
 	updateLight();
 
-	if(shadowParams.SAVSM || shadowParams.VSSM) {
+	if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.MSSM) {
 		glUseProgram(shaderProg[MOMENT_SHADER]);
 		myGLGeometryViewer.setShaderProg(shaderProg[MOMENT_SHADER]);
+		myGLGeometryViewer.configureMoments(shadowParams);
 		myGLGeometryViewer.configureLinearization();
 	} else if(shadowParams.ESSM) {
 		glUseProgram(shaderProg[EXPONENTIAL_SHADER]);
@@ -255,7 +257,7 @@ void displaySceneFromCameraPOV(GLuint shader)
 	glUseProgram(shader);
 	myGLGeometryViewer.setShaderProg(shader);
 	shadowParams.shadowMap = textures[SHADOW_MAP_DEPTH];
-	if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM) {
+	if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM) {
 		if(shadowParams.SAT)
 			shadowParams.SATShadowMap = textures[SAT_SHADOW_MAP_COLOR];
 		else
@@ -672,6 +674,7 @@ void resetShadowParameters() {
 	shadowParams.SAVSM = false;
 	shadowParams.VSSM = false;
 	shadowParams.ESSM = false;
+	shadowParams.MSSM = false;
 
 }
 
@@ -752,6 +755,10 @@ void softShadowMenu(int id) {
 		resetShadowParameters();
 		shadowParams.ESSM = true;
 		break;
+	case 5:
+		resetShadowParameters();
+		shadowParams.MSSM = true;
+		break;
 	}
 }
 
@@ -784,6 +791,7 @@ void createMenu() {
 		glutAddMenuEntry("Summed-Area Variance Shadow Mapping", 2);
 		glutAddMenuEntry("Variance Soft Shadow Mapping", 3);
 		glutAddMenuEntry("Exponential Soft Shadow Mapping", 4);
+		glutAddMenuEntry("Moment Soft Shadow Mapping", 5);
 
 	transformationMenuID = glutCreateMenu(transformationMenu);
 		glutAddMenuEntry("Translation", 0);
@@ -840,7 +848,7 @@ void initGL(char *configurationFile) {
 	lightSource->setNumberOfPointLights(64.0);
 
 	resetShadowParameters();
-	shadowParams.ESSM = true;
+	shadowParams.MSSM = true;
 	shadowParams.SAT = false;
 	shadowParams.shadowMapWidth = shadowMapWidth;
 	shadowParams.shadowMapHeight = shadowMapHeight;
@@ -848,8 +856,8 @@ void initGL(char *configurationFile) {
 	shadowParams.windowHeight = windowHeight;
 	shadowParams.shadowIntensity = 0.25;
 	shadowParams.accFactor = 1.0/lightSource->getNumberOfPointLights();
-	shadowParams.blockerSearchSize = 8;
-	shadowParams.kernelSize = 16;
+	shadowParams.blockerSearchSize = 7;
+	shadowParams.kernelSize = 15;
 	shadowParams.lightSourceRadius = lightSource->getSize()/2;
 
 	myGLTextureViewer.loadQuad();

@@ -16,13 +16,14 @@ uniform int windowHeight;
 uniform int useTextureForColoring;
 uniform int useMeshColor;
 
-vec4 phong()
+vec4 phong(float shadow)
 {
 
 	vec4 light_ambient = vec4(0.4, 0.4, 0.4, 1);
     vec4 light_specular = vec4(0.25, 0.25, 0.25, 1);
     vec4 light_diffuse = vec4(0.5, 0.5, 0.5, 1);
     float shininess = 10.0;
+	float specShadow = shadow - shadowIntensity;
 
     vec3 L = normalize(lightPosition.xyz - v);   
     vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0)  
@@ -35,7 +36,7 @@ vec4 phong()
     vec4 Idiff = light_diffuse * max(dot(N,L), 0.0);    
    
     // calculate Specular Term:
-    vec4 Ispec = light_specular * pow(max(dot(R,E),0.0), 0.3 * shininess);
+    vec4 Ispec = specShadow * light_specular * pow(max(dot(R,E),0.0), 0.3 * shininess);
 
     vec4 sceneColor;
    
@@ -53,15 +54,14 @@ vec4 phong()
 	else
 		sceneColor = gl_FrontLightModelProduct.sceneColor;
    
-	return sceneColor * (Idiff + Ispec + Iamb);  
+	return shadow * sceneColor * (Idiff + Ispec + Iamb);  
    
 }
 
 void main()
 {	
 
-	vec4 color = phong();
 	float accIntensity = texture2D(accumulationMap, vec2(gl_FragCoord.x/windowWidth, gl_FragCoord.y/windowHeight)).r;
-	gl_FragColor = color * accIntensity;
+	gl_FragColor = phong(accIntensity);
 
 }

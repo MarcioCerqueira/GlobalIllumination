@@ -4,6 +4,8 @@ uniform sampler2D hierarchicalShadowMap;
 uniform sampler2D texture0;
 uniform sampler2D texture1;
 uniform sampler2D texture2;
+uniform vec4 momentTranslationVector;
+uniform mat4 momentInverseRotationMatrix;
 varying vec4 shadowCoord;
 varying vec3 N;
 varying vec3 v;  
@@ -27,15 +29,17 @@ uniform int PCSS;
 uniform int SAVSM;
 uniform int VSSM;
 uniform int ESSM;
+uniform int MSSM;
 uniform int SAT;
 
-vec4 phong()
+vec4 phong(float shadow)
 {
 
 	vec4 light_ambient = vec4(0.4, 0.4, 0.4, 1);
     vec4 light_specular = vec4(0.25, 0.25, 0.25, 1);
     vec4 light_diffuse = vec4(0.5, 0.5, 0.5, 1);
     float shininess = 10.0;
+	float specShadow = shadow - shadowIntensity;
 
     vec3 L = normalize(lightPosition.xyz - v);   
     vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0)  
@@ -48,7 +52,7 @@ vec4 phong()
     vec4 Idiff = light_diffuse * max(dot(N,L), 0.0);    
    
     // calculate Specular Term:
-    vec4 Ispec = light_specular * pow(max(dot(R,E),0.0), 0.3 * shininess);
+    vec4 Ispec = specShadow * light_specular * pow(max(dot(R,E),0.0), 0.3 * shininess);
 
     vec4 sceneColor;
    
@@ -66,7 +70,7 @@ vec4 phong()
 	else
 		sceneColor = gl_FrontLightModelProduct.sceneColor;
    
-	return sceneColor * (Idiff + Ispec + Iamb);  
+	return shadow * sceneColor * (Idiff + Ispec + Iamb);  
    
 }
 
@@ -127,6 +131,79 @@ float chebyshevUpperBound(vec2 moments, float distanceToLight)
 	return p_max;
 
 }
+
+vec3 computeMomentDepthsFromMSM(vec4 moments, vec3 normalizedShadowCoord)
+{
+
+	vec3 z, c, d;
+	float bias = 0.00003;
+	vec4 b = momentInverseRotationMatrix * (moments - momentTranslationVector);
+	b = (1.0 - bias) * b + bias * vec4(0.5, 0.5, 0.5, 0.5);
+	
+	z.x = linearize(normalizedShadowCoord.z);
+	d = vec3(1.0, z.x, z.x * z.x);
+
+	//Use Cholesky decomposition (LDLT) to solve c
+	float L10 = b.x;
+	float L20 = b.y;
+	float D11 = b.y - L10 * L10;
+	float L21 = (b.z - L20 * L10)/D11;
+	float D22 = b.w - L20 * L20 - L21 * L21 * D11;
+	
+	float y0 = d.x;
+	float y1 = d.y - L10 * y0;
+	float y2 = d.z - L20 * y0 - L21 * y1;
+
+	y1 /= D11;
+	y2 /= D22;
+	
+	c.z = y2;
+	c.y = y1 - L21 * c.z;
+	c.x = y0 - L10 * c.y - L20 * c.z;	
+
+	// Solve the quadratic equation c[0]+c[1]*z+c[2]*z^2 to obtain solutions z[1] and z[2]
+	float p = c.y/c.z;
+	float q = c.x/c.z;
+	float D = ((p*p)/4.0)-q;
+	float r = sqrt(D);
+	z.y = -(p/2.0)-r;
+	z.z = -(p/2.0)+r;
+	
+	return z;
+
+}
+
+vec3 computeWeightsFromMSM(vec4 moments, vec3 z)
+{
+
+	vec3 w;
+	float bias = 0.00003;
+	vec4 b = momentInverseRotationMatrix * (moments - momentTranslationVector);
+	b = (1.0 - bias) * b + bias * vec4(0.5, 0.5, 0.5, 0.5);
+	
+	w.x = (z.y * z.z - b.x * (z.y + z.z) + b.y)/((z.x - z.y) * (z.x - z.z));
+	w.y = (z.x * z.z - b.x * (z.x + z.z) + b.y)/((z.z - z.y) * (z.x - z.y));
+	w.z = 1.0f - w.x - w.y;
+	return w;
+
+}
+
+float computeShadowIntensityFromMSM(vec4 moments, vec3 z)
+{
+
+	float bias = 0.00003;
+	vec4 b = momentInverseRotationMatrix * (moments - momentTranslationVector);
+	b = (1.0 - bias) * b + bias * vec4(0.5, 0.5, 0.5, 0.5);
+	
+	if(z.x <= z.y)
+		return 1.0;
+	else if(z.x <= z.z)
+		return clamp((1.0 - clamp((z.x * z.z - b.x * (z.x + z.z) + b.y)/((z.z - z.y) * (z.x - z.y)), 0.0, 1.0)), shadowIntensity, 1.0);
+	else 
+		return clamp((1.0 - clamp(1.0 - (z.y * z.z - b.x * (z.y + z.z) + b.y)/((z.x - z.y) * (z.x - z.z)), 0.0, 1.0)), shadowIntensity, 1.0);
+	
+}
+
 
 float computeAverageBlockerDepthBasedOnPCF(vec4 normalizedShadowCoord) 
 {
@@ -262,14 +339,84 @@ float computeAverageBlockerDepthBasedOnESM(vec4 normalizedShadowCoord)
 	}
 
 	probability = exp(-c * linearize(normalizedShadowCoord.z)) * averageExponential;
-	if(probability > 0.95) return 1.0;
+	if(probability > 0.925) return 1.0;
 	zocc = (averageDepth - exp(-c * linearize(normalizedShadowCoord.z)) * zunocc)/(1.0 - probability);
 	return nonLinearize(zocc);
 	
 }
 
+float computeAverageBlockerDepthBasedOnMSM(vec4 normalizedShadowCoord) 
+{
+
+	float bias = 0.01;
+	float averageDepth = 0.0;
+	float blockerSearchWidth = float(lightSourceRadius)/float(shadowMapWidth);
+	float stepSize = 2.0 * blockerSearchWidth/float(blockerSearchSize);
+	vec4 moments = vec4(0.0);
+	vec3 depths = vec3(0.0);
+	vec3 weights = vec3(0.0);
+	int count = 0;
+	float sum = 0.0;
+	
+	if(SAT == 1) {
+ 
+		float div = 2.0 * blockerSearchWidth/stepSize;
+		float SATFilterSize = div / 2.0;
+
+		float xmax = normalizedShadowCoord.x + (div) * stepSize;
+		float xmin = normalizedShadowCoord.x - (div + 1.0) * stepSize;
+		float ymax = normalizedShadowCoord.y + (div) * stepSize;
+		float ymin = normalizedShadowCoord.y - (div + 1.0) * stepSize;
+	
+		vec4 A = texture2D(SATShadowMap, vec2(xmin, ymin));
+		vec4 B = texture2D(SATShadowMap, vec2(xmax, ymin));
+		vec4 C = texture2D(SATShadowMap, vec2(xmin, ymax));
+		vec4 D = texture2D(SATShadowMap, vec2(xmax, ymax));
+		moments = (D + A - B - C)/float(SATFilterSize * SATFilterSize);
+	
+	} else {
+
+		for(float w = -blockerSearchWidth; w <= blockerSearchWidth; w += stepSize) {
+			for(float h = -blockerSearchWidth; h <= blockerSearchWidth; h += stepSize) {
+		
+				moments += texture2D(SATShadowMap, vec2(normalizedShadowCoord.xy + vec2(w, h)));
+				count++;
+
+			}
+		}
+
+		moments /= count;
+
+	}
+
+	depths = computeMomentDepthsFromMSM(moments, normalizedShadowCoord);
+	weights = 1.0 - computeWeightsFromMSM(moments, depths);
+	
+	if(depths.x > depths.y) {
+		averageDepth += weights.y * depths.y;
+		sum += weights.y;
+	}
+		
+	if(depths.x > depths.z) {
+		averageDepth += weights.z * depths.z;
+		sum += weights.z;
+	}
+
+	averageDepth += bias * depths.x;
+	sum += bias;
+	
+	if(sum > 1.0 - bias) 
+		return 1.0;
+	else 
+		return nonLinearize(averageDepth/sum);
+	
+}
+
 float computePenumbraWidth(float averageDepth, float distanceToLight)
 {
+
+	if(averageDepth < 0.99)
+		return 0.0;
 
 	float penumbraWidth = ((distanceToLight - averageDepth)/averageDepth) * float(lightSourceRadius);
 	return (float(zNear) * penumbraWidth)/distanceToLight;
@@ -407,6 +554,55 @@ float ESM(float penumbraWidth, vec4 normalizedShadowCoord)
 
 }
 
+float MSM(float penumbraWidth, vec4 normalizedShadowCoord)
+{
+
+	float stepSize = 2.0 * penumbraWidth/float(kernelSize);
+	
+	if(stepSize <= 0.0 || stepSize >= 1.0)
+		return 1.0;
+	
+	vec4 moments = vec4(0.0);
+	vec3 depths = vec3(0.0);
+
+	if(SAT == 1) {
+
+		float div = 2.0 * penumbraWidth/stepSize;
+		float SATFilterSize = div / 2.0;
+
+		float xmax = normalizedShadowCoord.x + (div) * stepSize;
+		float xmin = normalizedShadowCoord.x - (div + 1.0) * stepSize;
+		float ymax = normalizedShadowCoord.y + (div) * stepSize;
+		float ymin = normalizedShadowCoord.y - (div + 1.0) * stepSize;
+	
+		vec4 A = texture2D(SATShadowMap, vec2(xmin, ymin));
+		vec4 B = texture2D(SATShadowMap, vec2(xmax, ymin));
+		vec4 C = texture2D(SATShadowMap, vec2(xmin, ymax));
+		vec4 D = texture2D(SATShadowMap, vec2(xmax, ymax));
+		moments = (D + A - B - C)/float(SATFilterSize * SATFilterSize);
+
+	} else {
+
+		int count = 0;
+
+		for(float w = -penumbraWidth; w <= penumbraWidth; w += stepSize) {
+			for(float h = -penumbraWidth; h <= penumbraWidth; h += stepSize) {
+		
+				moments += texture2D(SATShadowMap, vec2(normalizedShadowCoord.xy + vec2(w, h)));
+				count++;
+
+			}
+		}
+	
+		moments /= count;
+	
+	}
+
+	depths = computeMomentDepthsFromMSM(moments, normalizedShadowCoord);
+	return computeShadowIntensityFromMSM(moments, depths);
+
+}
+
 float computeVisibilityFromHSM(float penumbraWidth, vec4 normalizedShadowCoord) 
 {
 
@@ -452,19 +648,25 @@ float varianceSoftShadowMapping(vec4 normalizedShadowCoord)
 float exponentialSoftShadowMapping(vec4 normalizedShadowCoord)
 {
 		
-
 	float averageDepth = computeAverageBlockerDepthBasedOnESM(normalizedShadowCoord);
 	float penumbraWidth = computePenumbraWidth(averageDepth, normalizedShadowCoord.z);
 	return ESM(penumbraWidth, normalizedShadowCoord);
 	
 }
 
+float momentSoftShadowMapping(vec4 normalizedShadowCoord)
+{
+
+	float averageDepth = computeAverageBlockerDepthBasedOnMSM(normalizedShadowCoord);
+	float penumbraWidth = computePenumbraWidth(averageDepth, normalizedShadowCoord.z);
+	return MSM(penumbraWidth, normalizedShadowCoord);
+	
+}
+
 void main()
 {	
 
-	vec4 color = phong();
 	vec4 normalizedShadowCoord = shadowCoord / shadowCoord.w;
-
 	float shadow = computePreEvaluationBasedOnNormalOrientation();
 	
 	if(shadowCoord.w > 0.0 && shadow == 1.0) {
@@ -477,9 +679,11 @@ void main()
 			shadow = varianceSoftShadowMapping(normalizedShadowCoord);
 		else if(ESSM == 1)
 			shadow = exponentialSoftShadowMapping(normalizedShadowCoord);
+		else if(MSSM == 1)
+			shadow = momentSoftShadowMapping(normalizedShadowCoord);
 			
 	}
 
-	gl_FragColor = shadow * color;
+	gl_FragColor = phong(shadow);
 
 }

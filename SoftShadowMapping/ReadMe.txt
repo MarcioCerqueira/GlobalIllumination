@@ -23,3 +23,5 @@ It was implemented based on the following papers:
 	- Variance Soft Shadow Mapping proposed in "Variance Soft Shadow Mapping" by B. Yang et al. in 2010;
 
 	- Exponential Soft Shadow Mapping proposed in "Exponential Soft Shadow Mapping" by L. Shen et al. in 2013;
+	
+	- Moment Soft Shadow Mapping proposed in "Beyond Hard Shadows: Moment Shadow Maps for Single Scattering, Soft Shadows and Translucent Occluders" by C. Peters et al. in 2016;

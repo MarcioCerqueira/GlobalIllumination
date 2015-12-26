@@ -66,6 +66,37 @@ void MyGLGeometryViewer::configureLinearization()
 	
 }
 
+void MyGLGeometryViewer::configureMoments(ShadowParams shadowParams)
+{
+
+	glm::mat4 mQuantization, mQuantizationInverse;
+	
+	mQuantization[0][0] = -2.07224649;	mQuantization[0][1] = 32.2370378;	mQuantization[0][2] = -68.5710746;	mQuantization[0][3] = 39.3703274;
+	mQuantization[1][0] = 13.7948857;	mQuantization[1][1] = -59.4683976;	mQuantization[1][2] = 82.035975;	mQuantization[1][3] = -35.3649032;
+	mQuantization[2][0] = 0.105877704;	mQuantization[2][1] = -1.90774663;	mQuantization[2][2] = 9.34965551;	mQuantization[2][3] = -6.65434907;
+	mQuantization[3][0] = 9.79240621;	mQuantization[3][1] = -33.76521106;	mQuantization[3][2] = 47.9456097;	mQuantization[3][3] = -23.9728048;
+	
+	mQuantization = glm::transpose(mQuantization);
+	mQuantizationInverse = glm::inverse(mQuantization);
+	
+	GLuint shadowMapSAVSMID = glGetUniformLocation(shaderProg, "SAVSM");
+	glUniform1i(shadowMapSAVSMID, shadowParams.SAVSM);
+	GLuint shadowMapVSSMID = glGetUniformLocation(shaderProg, "VSSM");
+	glUniform1i(shadowMapVSSMID, shadowParams.VSSM);
+	GLuint shadowMapMSSMID = glGetUniformLocation(shaderProg, "MSSM");
+	glUniform1i(shadowMapMSSMID, shadowParams.MSSM);
+
+	if(shadowParams.MSSM) {
+		GLuint tQuantizationID = glGetUniformLocation(shaderProg, "momentTranslationVector");
+		glUniform4f(tQuantizationID, 0.0359558848, 0.0, 0.0, 0.0);
+		GLuint mQuantizationID = glGetUniformLocation(shaderProg, "momentRotationMatrix");
+		glUniformMatrix4fv(mQuantizationID, 1, GL_FALSE, &mQuantization[0][0]);
+		GLuint mQuantizationInverseID = glGetUniformLocation(shaderProg, "momentInverseRotationMatrix");
+		glUniformMatrix4fv(mQuantizationInverseID, 1, GL_FALSE, &mQuantizationInverse[0][0]);
+	}
+
+}
+
 void MyGLGeometryViewer::configurePhong(glm::vec3 lightPosition, glm::vec3 cameraPosition) 
 {
 
@@ -126,12 +157,9 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glUniform1i(SATID, shadowParams.SAT);
 	GLuint PCSSID = glGetUniformLocation(shaderProg, "PCSS");
 	glUniform1i(PCSSID, shadowParams.PCSS);
-	GLuint SAVSMID = glGetUniformLocation(shaderProg, "SAVSM");
-	glUniform1i(SAVSMID, shadowParams.SAVSM);
-	GLuint VSSMID = glGetUniformLocation(shaderProg, "VSSM");
-	glUniform1i(VSSMID, shadowParams.VSSM);
 	GLuint ESSMID = glGetUniformLocation(shaderProg, "ESSM");
 	glUniform1i(ESSMID, shadowParams.ESSM);
+	configureMoments(shadowParams);
 	GLuint shadowMap = glGetUniformLocation(shaderProg, "shadowMap");
 	glUniform1i(shadowMap, 0);
 
@@ -144,7 +172,7 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		GLuint normalMap = glGetUniformLocation(shaderProg, "normalMap");
 		glUniform1i(normalMap, 8);
 	
-	} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM) {
+	} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM) {
 
 		GLuint SATShadowMap = glGetUniformLocation(shaderProg, "SATShadowMap");
 		glUniform1i(SATShadowMap, 1);
@@ -171,7 +199,7 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		glActiveTexture(GL_TEXTURE8);
 		glBindTexture(GL_TEXTURE_2D, shadowParams.normalMap);
 		
-	} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM) {
+	} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM) {
 
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, shadowParams.SATShadowMap);
@@ -197,7 +225,7 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		glActiveTexture(GL_TEXTURE8);
 		glDisable(GL_TEXTURE_2D);
 
-	} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM) {
+	} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM) {
 	
 		glActiveTexture(GL_TEXTURE1);
 		glDisable(GL_TEXTURE_2D);

@@ -20,6 +20,7 @@ public:
 	void configureAmbient(int windowWidth, int windowHeight);
 	void configureLight();	
 	void configureLinearization();
+	void configureMoments(ShadowParams shadowParams);
 	void configurePhong(glm::vec3 lightPosition, glm::vec3 cameraPosition);
 	void configureShadow(ShadowParams shadowParams);
 	void drawPlane(float x, float y, float z);
