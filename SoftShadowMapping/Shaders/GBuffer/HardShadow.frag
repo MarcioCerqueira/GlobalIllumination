@@ -1,5 +1,5 @@
 uniform sampler2D shadowMap;
-uniform sampler2D accumulationMap;
+uniform sampler2D softShadowMap;
 uniform sampler2D vertexMap;
 uniform sampler2D normalMap;
 uniform mat4 MV;
@@ -11,6 +11,7 @@ uniform float shadowIntensity;
 uniform float accFactor;
 uniform int windowWidth;
 uniform int windowHeight;
+uniform int monteCarlo;
 varying vec2 f_texcoord;
 
 
@@ -36,19 +37,35 @@ void main()
 {	
 
     vec4 vertex = texture2D(vertexMap, f_texcoord);
+	if(vertex.x == 0.0) discard; //Discard background scene
+
 	vec4 normal = texture2D(normalMap, f_texcoord);
 	vec4 shadowCoord = lightMVP * vertex;
 	vec4 normalizedShadowCoord = shadowCoord / shadowCoord.w;
-	float shadow = computePreEvaluationBasedOnNormalOrientation(vertex, normal);
+	vec2 shadow = vec2(0.0); //we store hard and projected shadow maps
+	shadow.r = computePreEvaluationBasedOnNormalOrientation(vertex, normal);
 	
-	if(shadowCoord.w > 0.0 && shadow == 1.0) {
+	if(shadowCoord.w > 0.0 && shadow.r == 1.0) {
 
 		float distanceFromLight = texture2D(shadowMap, vec2(normalizedShadowCoord.st)).z;		
-		shadow = (normalizedShadowCoord.z <= distanceFromLight) ? 1.0 : shadowIntensity; 
+		shadow.r = (normalizedShadowCoord.z <= distanceFromLight) ? 1.0 : shadowIntensity; 
+		if(shadow.r == shadowIntensity) shadow.g = distanceFromLight;
 		
+	} 
+	
+	if(monteCarlo == 1) {
+
+		float accIntensity = texture2D(softShadowMap, f_texcoord).r;
+		shadow.r = shadow.r * accFactor + accIntensity;
+		shadow.g = 0.0;
+
+	} else {
+
+		if(computePreEvaluationBasedOnNormalOrientation(vertex, normal) == shadowIntensity)
+			shadow.r = 0.0;
+
 	}
 
-	float accIntensity = texture2D(accumulationMap, f_texcoord).r;
-	gl_FragColor = vec4(shadow * accFactor + accIntensity, 0.0, 0.0, 1.0);
+	gl_FragColor = vec4(shadow, 0.0, 1.0);
 
 }

@@ -12,13 +12,19 @@ It was implemented based on the following papers:
 
 	- G-Buffer proposed in "Comprehensible Rendering of 3-D Shapes" by T. Saito and T. Takahashi in 1990;
 
+	- Bilateral Filter proposed in "Bilateral Filtering for Gray and Color Images" by C. Tomasi and R. Manduchi in 1998;
+
 	- Percentage-Closer Soft Shadows proposed in "Percentage-Closer Soft Shadows" by R. Fernando in 2005;
+
+	- Separable Bilateral Filter  proposed in "Separable Bilateral Filtering for Fast Video Preprocessing" by T.Pham and L. van Vliet in 2005;
 
 	- Summed-Area Tables in GPU proposed in "Fast Summed-Area Table Generation and Its Applications" by J. Hensley et al. in 2005;
 
 	- Hierarchical Shadow Map proposed in "Real-Time Soft Shadow Mapping by Backprojection" by G. Guennebaud et al. in 2006;
 
 	- Summed-Area Variance Shadow Mapping proposed in "Summed-Area Variance Shadow Mapping" by A. Lauritzen in 2007;
+
+	- Screen-Space Percentage-Closer Soft Shadows proposed in "Screen-Space Percentage-Closer Soft Shadows" by M. MohammadBagher et al. in 2010;
 
 	- Variance Soft Shadow Mapping proposed in "Variance Soft Shadow Mapping" by B. Yang et al. in 2010;
 

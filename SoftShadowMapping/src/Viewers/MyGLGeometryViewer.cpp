@@ -63,6 +63,8 @@ void MyGLGeometryViewer::configureLinearization()
 	glUniform1i(zNearID, zNear);
 	GLuint zFarID = glGetUniformLocation(shaderProg, "zFar");
 	glUniform1i(zFarID, zFar);
+	GLuint fovID = glGetUniformLocation(shaderProg, "fov");
+	glUniform1f(fovID, fov);
 	
 }
 
@@ -155,6 +157,8 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glUniform1i(lightSourceRadiusID, shadowParams.lightSourceRadius);
 	GLuint SATID = glGetUniformLocation(shaderProg, "SAT");
 	glUniform1i(SATID, shadowParams.SAT);
+	GLuint monteCarloID = glGetUniformLocation(shaderProg, "monteCarlo");
+	glUniform1i(monteCarloID, shadowParams.monteCarlo);
 	GLuint PCSSID = glGetUniformLocation(shaderProg, "PCSS");
 	glUniform1i(PCSSID, shadowParams.PCSS);
 	GLuint ESSMID = glGetUniformLocation(shaderProg, "ESSM");
@@ -163,22 +167,36 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	GLuint shadowMap = glGetUniformLocation(shaderProg, "shadowMap");
 	glUniform1i(shadowMap, 0);
 
-	if(shadowParams.monteCarlo) {
+	if(shadowParams.monteCarlo || shadowParams.SSPCSS) {
 
-		GLuint accumulationMap = glGetUniformLocation(shaderProg, "accumulationMap");
-		glUniform1i(accumulationMap, 1);
 		GLuint vertexMap = glGetUniformLocation(shaderProg, "vertexMap");
-		glUniform1i(vertexMap, 7);
+		glUniform1i(vertexMap, 8);
 		GLuint normalMap = glGetUniformLocation(shaderProg, "normalMap");
-		glUniform1i(normalMap, 8);
-	
+		glUniform1i(normalMap, 9);
+
+		if(shadowParams.monteCarlo || shadowParams.useSoftShadowMap) {
+			GLuint accumulationMap = glGetUniformLocation(shaderProg, "softShadowMap");
+			glUniform1i(accumulationMap, 1);
+		} 
+
+		if(shadowParams.SSPCSS) {
+
+			if(shadowParams.useHardShadowMap || shadowParams.usePartialAverageBlockerDepthMap) {
+				GLuint hardShadowMap = glGetUniformLocation(shaderProg, "hardShadowMap");
+				glUniform1i(hardShadowMap, 1);
+			}
+
+		}
+
+
 	} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM) {
 
 		GLuint SATShadowMap = glGetUniformLocation(shaderProg, "SATShadowMap");
 		glUniform1i(SATShadowMap, 1);
+
 		if(shadowParams.VSSM) {
 			GLuint hierarchicalShadowMap = glGetUniformLocation(shaderProg, "hierarchicalShadowMap");
-			glUniform1i(hierarchicalShadowMap, 7);
+			glUniform1i(hierarchicalShadowMap, 8);
 		}
 
 	}
@@ -188,24 +206,36 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, shadowParams.shadowMap);
 
-	if(shadowParams.monteCarlo) {
-
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, shadowParams.accumulationMap);
-
-		glActiveTexture(GL_TEXTURE7);
-		glBindTexture(GL_TEXTURE_2D, shadowParams.vertexMap);
+	if(shadowParams.monteCarlo || shadowParams.SSPCSS) {
 
 		glActiveTexture(GL_TEXTURE8);
+		glBindTexture(GL_TEXTURE_2D, shadowParams.vertexMap);
+
+		glActiveTexture(GL_TEXTURE9);
 		glBindTexture(GL_TEXTURE_2D, shadowParams.normalMap);
 		
+		if(shadowParams.monteCarlo || shadowParams.useSoftShadowMap) {
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, shadowParams.softShadowMap);
+		} 
+		
+		if(shadowParams.SSPCSS) {
+
+			if(shadowParams.useHardShadowMap || shadowParams.usePartialAverageBlockerDepthMap) {
+				glActiveTexture(GL_TEXTURE1);
+				glBindTexture(GL_TEXTURE_2D, shadowParams.hardShadowMap);
+			}
+
+		}
+
+
 	} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM) {
 
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, shadowParams.SATShadowMap);
 		
 		if(shadowParams.VSSM) {
-			glActiveTexture(GL_TEXTURE7);
+			glActiveTexture(GL_TEXTURE8);
 			glBindTexture(GL_TEXTURE_2D, shadowParams.hierarchicalShadowMap);
 		}
 
@@ -214,16 +244,18 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glActiveTexture(GL_TEXTURE0);
 	glDisable(GL_TEXTURE_2D);
 
-	if(shadowParams.monteCarlo) {
-
-		glActiveTexture(GL_TEXTURE1);
-		glDisable(GL_TEXTURE_2D);
-
-		glActiveTexture(GL_TEXTURE7);
-		glDisable(GL_TEXTURE_2D);
+	if(shadowParams.monteCarlo || shadowParams.SSPCSS) {
 
 		glActiveTexture(GL_TEXTURE8);
 		glDisable(GL_TEXTURE_2D);
+
+		glActiveTexture(GL_TEXTURE9);
+		glDisable(GL_TEXTURE_2D);
+
+		if(shadowParams.monteCarlo || (shadowParams.SSPCSS && (shadowParams.useHardShadowMap || shadowParams.usePartialAverageBlockerDepthMap))) {
+			glActiveTexture(GL_TEXTURE1);
+			glDisable(GL_TEXTURE_2D);
+		}
 
 	} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM) {
 	
@@ -231,7 +263,7 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		glDisable(GL_TEXTURE_2D);
 
 		if(shadowParams.VSSM) {
-			glActiveTexture(GL_TEXTURE7);
+			glActiveTexture(GL_TEXTURE8);
 			glDisable(GL_TEXTURE_2D);
 		}
 

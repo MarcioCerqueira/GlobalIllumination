@@ -23,11 +23,17 @@ typedef struct ShadowParams
 	bool VSSM;
 	bool ESSM;
 	bool MSSM;
+	bool SSPCSS;
 	bool SAT; 
+	bool useHardShadowMap;
+	bool useSoftShadowMap;
+	bool usePartialAverageBlockerDepthMap;
 	GLuint shadowMap;
 	GLuint SATShadowMap;
 	GLuint hierarchicalShadowMap;
-	GLuint accumulationMap;
+	GLuint hardShadowMap;
+	GLuint softShadowMap;
+	GLuint partialAverageBlockerDepthMap;
 	GLuint vertexMap;
 	GLuint normalMap;
 } ShadowParams;

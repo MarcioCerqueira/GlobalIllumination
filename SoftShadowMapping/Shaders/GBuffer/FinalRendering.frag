@@ -1,5 +1,4 @@
-uniform sampler2D shadowMap;
-uniform sampler2D accumulationMap;
+uniform sampler2D softShadowMap;
 uniform sampler2D texture0;
 uniform sampler2D texture1;
 uniform sampler2D texture2;
@@ -61,7 +60,7 @@ vec4 phong(float shadow)
 void main()
 {	
 
-	float accIntensity = texture2D(accumulationMap, vec2(gl_FragCoord.x/windowWidth, gl_FragCoord.y/windowHeight)).r;
-	gl_FragColor = phong(accIntensity);
+	float softShadowIntensity = texture2D(softShadowMap, vec2(gl_FragCoord.x/windowWidth, gl_FragCoord.y/windowHeight)).r;
+	gl_FragColor = phong(softShadowIntensity);
 
 }

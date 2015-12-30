@@ -53,7 +53,7 @@ void Filter::buildBilateralKernel(int order) {
 	int kernelCenter = order/2;
 
 	for(int i = 0; i <= kernelCenter; i++) {
-		kernel[kernelCenter - i] = kernel[kernelCenter + 1] = 0.39894f * exp((-0.5f * i * i)/(sigmaSpace * sigmaSpace)) / sigmaSpace;
+		kernel[kernelCenter - i] = kernel[kernelCenter + i] = 0.39894f * exp((-0.5f * i * i)/(sigmaSpace * sigmaSpace)) / sigmaSpace;
 	}
 
 }
