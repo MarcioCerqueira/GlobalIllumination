@@ -12,6 +12,7 @@
 //Summed-Area Variance Shadow Mapping - A. Lauritzen. Summed-Area Variance Shadow Maps. 2007.
 //Screen-Space Percentage-Closer Soft Shadows - M. MohammadBagher et al. Screen-Space Percentage-Closer Soft Shadows. 2010.
 //Variance Soft Shadow Mapping - B. Yang et al. Variance Soft Shadow Mapping. 2010.
+//Screen Space Anisotropic Blurred Soft Shadows - Z. Zheng and S. Saito. Screen Space Anisotropic Blurred Soft Shadows. 2011.
 //Exponential Soft Shadow Mapping - L. Shen et al. Exponential Soft Shadow Mapping. 2013.
 //Moment Soft Shadow Mapping - C. Peters et al. Beyond Hard Shadows: Moment Shadow Maps for Single Scattering, Soft Shadows and Translucent Occluders. 2016.
 //http://rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling/ for gaussian mask weights
@@ -71,7 +72,7 @@ enum
 	MIN_MAX_SHADER = 12,
 	PARTIAL_BLOCKER_SEARCH_SHADER = 13,
 	PARTIAL_SHADOW_FILTERING_SHADER = 14,
-	SSPCSS_SHADER = 15
+	SCREEN_SPACE_SOFT_SHADOW_SHADER = 15
 };
 
 enum
@@ -314,7 +315,7 @@ void displaySceneFromGBuffer(GLuint shader)
 		shadowParams.hardShadowMap = textures[HARD_SHADOW_MAP_COLOR];
 	if(shadowParams.usePartialAverageBlockerDepthMap)
 		shadowParams.hardShadowMap = textures[PARTIAL_BLOCKER_SEARCH_MAP_COLOR];
-	if(shadowParams.SSPCSS) 
+	if(shadowParams.SSPCSS || shadowParams.SSABSS) 
 		myGLTextureViewer.configureSeparableFilter(bilateralFilter->getOrder(), bilateralFilter->getKernel(), false, false, bilateralFilter->getSigmaSpace(), 
 			bilateralFilter->getSigmaColor());
 
@@ -527,29 +528,41 @@ void renderScreenSpaceSoftShadows()
 	displaySceneFromGBuffer(shaderProg[GBUFFER_HARD_SHADOW_SHADER]);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	
-	shadowParams.useHardShadowMap = true;
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0);
-	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[PARTIAL_BLOCKER_SEARCH_MAP_FRAMEBUFFER]);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	displaySceneFromGBuffer(shaderProg[PARTIAL_BLOCKER_SEARCH_SHADER]);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	shadowParams.useHardShadowMap = false;
+	if(shadowParams.SSPCSS) {
+		
+		shadowParams.useHardShadowMap = true;
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0);
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[PARTIAL_BLOCKER_SEARCH_MAP_FRAMEBUFFER]);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		displaySceneFromGBuffer(shaderProg[PARTIAL_BLOCKER_SEARCH_SHADER]);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		shadowParams.useHardShadowMap = false;
 	
-	shadowParams.usePartialAverageBlockerDepthMap = true;
+	}
+
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0);
-	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HARD_SHADOW_FRAMEBUFFER]);
+	if(shadowParams.SSPCSS) {
+		shadowParams.usePartialAverageBlockerDepthMap = true;
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HARD_SHADOW_FRAMEBUFFER]);
+	} else {
+		shadowParams.useHardShadowMap = true;
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[PARTIAL_BLOCKER_SEARCH_MAP_FRAMEBUFFER]);
+	}
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	displaySceneFromGBuffer(shaderProg[PARTIAL_SHADOW_FILTERING_SHADER]);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	shadowParams.usePartialAverageBlockerDepthMap = false;
-	
-	shadowParams.useHardShadowMap = true;
+	if(shadowParams.SSPCSS) shadowParams.usePartialAverageBlockerDepthMap = false;
+	else shadowParams.useHardShadowMap = false;
+
+	if(shadowParams.SSPCSS) shadowParams.useHardShadowMap = true;
+	else shadowParams.usePartialAverageBlockerDepthMap = true;	
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0);
 	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[SOFT_SHADOW_FRAMEBUFFER]);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	displaySceneFromGBuffer(shaderProg[SSPCSS_SHADER]);
+	displaySceneFromGBuffer(shaderProg[SCREEN_SPACE_SOFT_SHADOW_SHADER]);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	shadowParams.useHardShadowMap = false;
+	if(shadowParams.SSPCSS) shadowParams.useHardShadowMap = false;
+	else shadowParams.usePartialAverageBlockerDepthMap = false;
 	
 	glDisable(GL_CULL_FACE);
 	glDisable(GL_POLYGON_OFFSET_FILL);
@@ -756,6 +769,7 @@ void resetShadowParameters() {
 	shadowParams.ESSM = false;
 	shadowParams.MSSM = false;
 	shadowParams.SSPCSS = false;
+	shadowParams.SSABSS = false;
 	shadowParams.useHardShadowMap = false;
 	shadowParams.useSoftShadowMap = false;
 	shadowParams.usePartialAverageBlockerDepthMap = false;
@@ -853,6 +867,10 @@ void screenSpaceSoftShadowMenu(int id) {
 		resetShadowParameters();
 		shadowParams.SSPCSS = true;
 		break;
+	case 1:
+		resetShadowParameters();
+		shadowParams.SSABSS = true;
+		break;
 	}
 }
 
@@ -889,6 +907,7 @@ void createMenu() {
 
 	screenSpaceSoftShadowMenuID = glutCreateMenu(screenSpaceSoftShadowMenu);
 		glutAddMenuEntry("Screen-Space Percentage-Closer Soft Shadow Mapping", 0);
+		glutAddMenuEntry("Screen-Space Anisotropic Blurred Soft Shadow Mapping", 1);
 
 	transformationMenuID = glutCreateMenu(transformationMenu);
 		glutAddMenuEntry("Translation", 0);
@@ -1062,7 +1081,7 @@ int main(int argc, char **argv) {
 	initShader("Shaders/Moments/MinMax", MIN_MAX_SHADER);
 	initShader("Shaders/ScreenSpace/PartialAverageBlockerDepth", PARTIAL_BLOCKER_SEARCH_SHADER);
 	initShader("Shaders/ScreenSpace/PartialShadowFiltering", PARTIAL_SHADOW_FILTERING_SHADER);
-	initShader("Shaders/ScreenSpace/SSPCSS", SSPCSS_SHADER);
+	initShader("Shaders/ScreenSpace/ScreenSpaceSoftShadow", SCREEN_SPACE_SOFT_SHADOW_SHADER);
 	glUseProgram(0); 
 
 	glutMainLoop();

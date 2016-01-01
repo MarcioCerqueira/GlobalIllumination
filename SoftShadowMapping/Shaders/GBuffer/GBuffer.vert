@@ -1,6 +1,7 @@
 uniform mat4 MVP;
 attribute vec3 vertex;
 attribute vec3 normal;
+uniform mat3 normalMatrix;
 varying vec4 GBufferNormal;
 varying vec4 GBufferVertex;
 

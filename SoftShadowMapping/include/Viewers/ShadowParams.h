@@ -24,6 +24,7 @@ typedef struct ShadowParams
 	bool ESSM;
 	bool MSSM;
 	bool SSPCSS;
+	bool SSABSS;
 	bool SAT; 
 	bool useHardShadowMap;
 	bool useSoftShadowMap;

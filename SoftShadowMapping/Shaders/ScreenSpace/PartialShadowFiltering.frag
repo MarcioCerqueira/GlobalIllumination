@@ -1,7 +1,10 @@
 uniform sampler2D vertexMap;
+uniform sampler2D normalMap;
+uniform sampler2D shadowMap;
 uniform sampler2D hardShadowMap;
 uniform mat4 lightMVP;
 uniform mat4 MV;
+uniform mat3 normalMatrix;
 uniform float shadowIntensity;
 uniform float fov;
 uniform float sigmaColor;
@@ -11,9 +14,13 @@ uniform int blockerSearchSize;
 uniform int lightSourceRadius;
 uniform int windowWidth;
 uniform int windowHeight;
+uniform int shadowMapWidth;
+uniform int shadowMapHeight;
+uniform int SSPCSS;
+uniform int SSABSS;
 varying vec2 f_texcoord;
 
-float computeAverageBlockerDepth() {
+float computeAverageBlockerDepthBasedOnBilateralFiltering() {
 
 	float averageDepth = 0.0;
 	float numberOfBlockers = 0;
@@ -51,6 +58,33 @@ float computeAverageBlockerDepth() {
 
 }
 
+float computeAverageBlockerDepthBasedOnBoxFiltering(vec4 normalizedShadowCoord) {
+
+	float averageDepth = 0.0;
+	float numberOfBlockers = 0;
+	vec2 blockerSearch = vec2(lightSourceRadius)/vec2(shadowMapWidth, shadowMapHeight);
+	vec2 stepSize = 2.0 * blockerSearch/float(blockerSearchSize);
+	vec2 shadow = vec2(0.0);
+
+	for(float w = -blockerSearch.x; w <= blockerSearch.x; w += stepSize.x) {
+		for(float h = -blockerSearch.y; h <= blockerSearch.y; h += stepSize.y) {
+		
+			float distanceFromLight = texture2D(shadowMap, vec2(normalizedShadowCoord.xy + vec2(w, h))).z;
+			if(normalizedShadowCoord.z > distanceFromLight) {
+				averageDepth += distanceFromLight;
+				numberOfBlockers++;
+			}
+
+		}
+	}
+
+	if(numberOfBlockers == 0)
+		return 1.0;
+	else
+		return averageDepth / numberOfBlockers;
+
+}
+
 float computePenumbraWidth(float averageDepth, float distanceToLight, vec4 vertex) {
 	
 	if(averageDepth < 0.99) 
@@ -63,7 +97,7 @@ float computePenumbraWidth(float averageDepth, float distanceToLight, vec4 verte
 
 }
 
-float bilateralFilter(float penumbraWidth) {
+float bilateralShadowFiltering(float penumbraWidth) {
 
 	float shadow = 0.0;
 	float illuminationCount = 0.0;
@@ -79,6 +113,7 @@ float bilateralFilter(float penumbraWidth) {
 	float weight = 0.0;
 	float invSigmaColor = 0.5f / (sigmaColor * sigmaColor);
 	float invSigmaSpace = 0.5f / (sigmaSpace * sigmaSpace);
+	float sigma = 1.0;
 
 	for(float w = -penumbraWidth; w <= penumbraWidth; w += stepSize) {
 		
@@ -88,7 +123,8 @@ float bilateralFilter(float penumbraWidth) {
 
 			space = w * w;
 			color = (value - shadow) * (value - shadow);
-			weight = exp(-(space * invSigmaSpace + color * invSigmaColor));
+			if(SSABSS == 1) sigma = normalize(normalMatrix * texture2D(normalMap, f_texcoord.xy).xyz).z * 1000.0;
+			weight = exp(-(space * invSigmaSpace + color * invSigmaColor)/sigma);
 			illuminationCount += weight * shadow;
 			count += weight;
 
@@ -110,10 +146,13 @@ void main()
 		vec4 vertex = texture2D(vertexMap, f_texcoord);
 		vec4 shadowCoord = lightMVP * vertex;
 		vec4 normalizedShadowCoord = shadowCoord / shadowCoord.w;
-	
-		float averageDepth = computeAverageBlockerDepth();
+		
+		float averageDepth; 
+		if(SSPCSS == 1) averageDepth = computeAverageBlockerDepthBasedOnBilateralFiltering();
+		else if(SSABSS == 1) averageDepth = computeAverageBlockerDepthBasedOnBoxFiltering(normalizedShadowCoord);
+
 		float penumbraWidth = computePenumbraWidth(averageDepth, normalizedShadowCoord.z, vertex);
-		shadow.r = bilateralFilter(penumbraWidth);
+		shadow.r = bilateralShadowFiltering(penumbraWidth);
 		gl_FragColor = vec4(shadow.r, penumbraWidth, 0.0, 1.0);
 
 	} else {

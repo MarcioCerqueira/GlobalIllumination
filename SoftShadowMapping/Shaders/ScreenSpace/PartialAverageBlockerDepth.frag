@@ -5,6 +5,8 @@ uniform float sigmaSpace;
 uniform int kernelSize;
 uniform int blockerSearchSize;
 uniform int lightSourceRadius;
+uniform int shadowMapWidth;
+uniform int shadowMapHeight;
 uniform int windowWidth;
 uniform int windowHeight;
 varying vec2 f_texcoord;

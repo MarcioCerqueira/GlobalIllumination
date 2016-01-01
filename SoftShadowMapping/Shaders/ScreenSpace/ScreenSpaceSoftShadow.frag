@@ -1,4 +1,6 @@
+uniform sampler2D normalMap;
 uniform sampler2D hardShadowMap;
+uniform mat3 normalMatrix;
 uniform float shadowIntensity;
 uniform float sigmaColor;
 uniform float sigmaSpace;
@@ -7,9 +9,11 @@ uniform int blockerSearchSize;
 uniform int lightSourceRadius;
 uniform int windowWidth;
 uniform int windowHeight;
+uniform int SSPCSS;
+uniform int SSABSS;
 varying vec2 f_texcoord;
 
-float bilateralFilter() {
+float bilateralShadowFiltering() {
 
 	vec2 compressedValues = texture2D(hardShadowMap, f_texcoord.xy).rg;
 	float shadow = 0.0;
@@ -27,6 +31,7 @@ float bilateralFilter() {
 	float weight = 0.0;
 	float invSigmaColor = 0.5f / (sigmaColor * sigmaColor);
 	float invSigmaSpace = 0.5f / (sigmaSpace * sigmaSpace);
+	float sigma = 1.0;
 
 	for(float h = -penumbraWidth; h <= penumbraWidth; h += stepSize) {
 		
@@ -36,7 +41,8 @@ float bilateralFilter() {
 
 			space = h * h;
 			color = (value - shadow) * (value - shadow);
-			weight = exp(-(space * invSigmaSpace + color * invSigmaColor));
+			if(SSABSS == 1) sigma = normalize(normalMatrix * texture2D(normalMap, f_texcoord.xy).xyz).z * 1000.0;
+			weight = exp(-(space * invSigmaSpace + color * invSigmaColor)/sigma);
 			illuminationCount += weight * shadow;
 			count += weight;
 
@@ -54,8 +60,8 @@ void main()
 	vec2 shadow = texture2D(hardShadowMap, f_texcoord.xy).rg;	
 	
 	if(shadow.r > 0.0) {
-	
-		shadow.r = bilateralFilter();
+		
+		shadow.r = bilateralShadowFiltering();
 		gl_FragColor = vec4(shadow.r, shadow.r, shadow.r, 1.0);
 
 	} else {
