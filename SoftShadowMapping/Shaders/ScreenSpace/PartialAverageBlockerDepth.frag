@@ -1,4 +1,7 @@
 uniform sampler2D hardShadowMap;
+uniform sampler2D shadowMap;
+uniform sampler2D vertexMap;
+uniform mat4 lightMVP;
 uniform float shadowIntensity;
 uniform float sigmaColor;
 uniform float sigmaSpace;
@@ -9,9 +12,11 @@ uniform int shadowMapWidth;
 uniform int shadowMapHeight;
 uniform int windowWidth;
 uniform int windowHeight;
+uniform int SSPCSS;
+uniform int SSSM;
 varying vec2 f_texcoord;
 
-float computeAverageBlockerDepth() {
+float computeAverageBlockerDepthBasedOnSSPCSS() {
 
 	float averageDepth = 0.0;
 	float numberOfBlockers = 0;
@@ -49,15 +54,45 @@ float computeAverageBlockerDepth() {
 
 }
 
+vec2 computeAverageBlockerDepthBasedOnSSSM() {
+
+	float averageDepth = 0.0;
+	float numberOfBlockers = 0;
+	vec2 blockerSearch = vec2(lightSourceRadius)/vec2(shadowMapWidth, shadowMapHeight);
+	vec2 stepSize = 2.0 * blockerSearch/float(blockerSearchSize);
+	vec2 shadow = vec2(0.0);
+	vec4 vertex = texture2D(vertexMap, f_texcoord);
+	vec4 shadowCoord = lightMVP * vertex;
+	vec4 normalizedShadowCoord = shadowCoord / shadowCoord.w;
+		
+	for(float w = -blockerSearch.x; w <= blockerSearch.x; w += stepSize.x) {
+		
+		float distanceFromLight = texture2D(shadowMap, vec2(normalizedShadowCoord.xy + vec2(w, 0.0))).z;
+		if(normalizedShadowCoord.z > distanceFromLight) {
+			averageDepth += distanceFromLight;
+			numberOfBlockers++;
+		}
+
+	}
+
+	return vec2(averageDepth, numberOfBlockers);
+
+}
+
 void main()
 {	
 
 	vec2 shadow = texture2D(hardShadowMap, f_texcoord.xy).rg;	
 	
 	if(shadow.r > 0.0) {
-	
-		float averageDepth = computeAverageBlockerDepth();
-		gl_FragColor = vec4(shadow.r, averageDepth, 0.0, 1.0);
+
+		if(SSPCSS == 1) {
+			float averageDepth = computeAverageBlockerDepthBasedOnSSPCSS();
+			gl_FragColor = vec4(shadow.r, averageDepth, 0.0, 1.0);
+		} else if(SSSM == 1) {
+			vec2 blockerSearchBuffer = computeAverageBlockerDepthBasedOnSSSM();
+			gl_FragColor = vec4(shadow.r, blockerSearchBuffer, 1.0);
+		}
 
 	} else {
 

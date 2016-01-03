@@ -32,4 +32,6 @@ It was implemented based on the following papers:
 
 	- Exponential Soft Shadow Mapping proposed in "Exponential Soft Shadow Mapping" by L. Shen et al. in 2013;
 	
+	- Separable Soft Shadow Mapping proposed in "Separable Soft Shadow Mapping" by J. Buades et al. in 2015;
+
 	- Moment Soft Shadow Mapping proposed in "Beyond Hard Shadows: Moment Shadow Maps for Single Scattering, Soft Shadows and Translucent Occluders" by C. Peters et al. in 2016;

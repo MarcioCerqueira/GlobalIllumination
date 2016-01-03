@@ -17,6 +17,8 @@ typedef struct ShadowParams
 	int lightSourceRadius;
 	float shadowIntensity;
 	float accFactor;
+	float blockerThreshold;
+	float filterThreshold;
 	bool monteCarlo;
 	bool PCSS;
 	bool SAVSM;
@@ -25,6 +27,7 @@ typedef struct ShadowParams
 	bool MSSM;
 	bool SSPCSS;
 	bool SSABSS;
+	bool SSSM;
 	bool SAT; 
 	bool useHardShadowMap;
 	bool useSoftShadowMap;
