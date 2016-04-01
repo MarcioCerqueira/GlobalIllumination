@@ -17,6 +17,8 @@ public:
 	float* getLightPosition() { return lightPosition; }
 	float* getLightAt() { return lightAt; }
 	float getDepthThreshold() { return depthThreshold; }
+	float getHSMAlpha() { return HSMAlpha; }
+	float getHSMBeta() { return HSMBeta; }
 private:
 	Mesh *mesh;
 	std::fstream file;
@@ -25,6 +27,8 @@ private:
 	float lightPosition[3];
 	float lightAt[3];
 	float depthThreshold;
+	float HSMAlpha;
+	float HSMBeta;
 };
 
 #endif

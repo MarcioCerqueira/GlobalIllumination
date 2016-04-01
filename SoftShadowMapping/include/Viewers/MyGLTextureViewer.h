@@ -11,6 +11,7 @@ class MyGLTextureViewer
 {
 
 public:
+	void createDepthComponentTextureArray(GLuint *texVBO, int index, int imageWidth, int imageHeight, int size);
 	void loadDepthComponentTexture(float *data, GLuint *texVBO, int index, int imageWidth, int imageHeight);
 	void loadRGBTexture(const unsigned char *data, GLuint *texVBO, int index, int imageWidth, int imageHeight);
 	void loadRGBTexture(float *data, GLuint *texVBO, int index, int imageWidth, int imageHeight, GLint param = GL_LINEAR_MIPMAP_LINEAR);

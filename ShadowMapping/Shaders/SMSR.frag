@@ -28,6 +28,7 @@ uniform int showClippedONDS;
 uniform int showSubCoord;
 uniform int RPCFPlusSMSR;
 uniform int SMSR;
+uniform int debug;
 
 float newDepth;
 
@@ -43,13 +44,14 @@ float decompressPositiveDiscontinuity(float normalizedDiscontinuity) {
 
 }
 
-vec4 phong()
+vec4 phong(float shadow)
 {
 
 	vec4 light_ambient = vec4(0.4, 0.4, 0.4, 1);
     vec4 light_specular = vec4(0.25, 0.25, 0.25, 1);
     vec4 light_diffuse = vec4(0.5, 0.5, 0.5, 1);
     float shininess = 10.0;
+	float specShadow = shadow - shadowIntensity;
 
     vec3 L = normalize(lightPosition.xyz - v);   
     vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0)  
@@ -62,7 +64,7 @@ vec4 phong()
     vec4 Idiff = light_diffuse * max(dot(N,L), 0.0);    
    
     // calculate Specular Term:
-    vec4 Ispec = light_specular * pow(max(dot(R,E),0.0), 0.3 * shininess);
+    vec4 Ispec = specShadow * light_specular * pow(max(dot(R,E),0.0), 0.3 * shininess);
 
     vec4 sceneColor;
    
@@ -80,7 +82,7 @@ vec4 phong()
 	else
 		sceneColor = gl_FrontLightModelProduct.sceneColor;
    
-	return sceneColor * (Idiff + Ispec + Iamb);  
+	return shadow * sceneColor * (Idiff + Ispec + Iamb);  
    
 }
 
@@ -142,7 +144,7 @@ bool getDisc(vec4 normalizedLightCoord, vec2 dir, vec4 discType)
 			
 		}
 
-		if(discType.r == 0.75 || discType.r == 1.0) {
+		if(discType.r == 0.75 || discType.r == 0.25) {
 
 			relativeCoord.x = normalizedLightCoord.x + shadowMapStep.x;
 			distanceFromLight = texture2D(shadowMap, relativeCoord.xy).z;
@@ -164,7 +166,7 @@ bool getDisc(vec4 normalizedLightCoord, vec2 dir, vec4 discType)
 			
 		}
 
-		if(discType.g == 0.75 || discType.g == 1.0) {
+		if(discType.g == 0.75 || discType.g == 0.25) {
 			
 			relativeCoord.y = normalizedLightCoord.y - shadowMapStep.y;
 			distanceFromLight = texture2D(shadowMap, relativeCoord.xy).z;
@@ -291,7 +293,7 @@ float clipONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinuity
 	//If negative discontinuity on both directions, do not clip the ONDS
 	if(normalizedDiscontinuity.x == -1.0 && normalizedDiscontinuity.y == -1.0) 
 		return 1.0;
-
+	
 	//If positive discontinuity, clip all the ONDS
 	if(normalizedDiscontinuity.x <= -2.0 || normalizedDiscontinuity.y <= -2.0)
 		return 0.0;
@@ -304,11 +306,11 @@ float clipONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinuity
 	if(discontinuity.r > 0.0 && discontinuity.g > 0.0) {
 
 		//Compute dominant axis - Evaluate if there is discontinuity in the closest neighbours
-		lightCoord.x -= ((discontinuity.r - 0.75) * 4.0) * shadowMapStep.x;
+		lightCoord.x -= ((0.5 - discontinuity.r) * 8.0 - 1) * shadowMapStep.x;
 		bool horizontal = getDisc(lightCoord, vec2(1.0, 0.0), discontinuity.b);
 		
-		lightCoord.x += ((discontinuity.r - 0.75) * 4.0) * shadowMapStep.x;
-		lightCoord.y += ((discontinuity.g - 0.75) * 4.0) * shadowMapStep.y;
+		lightCoord.x += ((0.5 - discontinuity.r) * 8.0 - 1) * shadowMapStep.x;
+		lightCoord.y += ((0.5 - discontinuity.g) * 8.0 - 1) * shadowMapStep.y;
 		bool vertical = getDisc(lightCoord, vec2(0.0, 1.0), discontinuity.b);
 
 		//If dominant axis is x-axis - Disable discontinuity in y-axis
@@ -325,13 +327,13 @@ float clipONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinuity
 		} else if(!horizontal && !vertical) {
 
 			if(discontinuity.g == 0.5) return step(subCoord.y, 1.0 - normalizedDiscontinuity.x);
-			else if(discontinuity.g == 1.0) return step(1.0 - subCoord.y, 1.0 - normalizedDiscontinuity.x);
-
+			else if(discontinuity.g == 0.25) return step(1.0 - subCoord.y, 1.0 - normalizedDiscontinuity.x);
+			
 		//If there are two dominant axis
 		} else {
 		
-			float a = mix(step(normalizedDiscontinuity.y, subCoord.x), step(normalizedDiscontinuity.y, 1.0 - subCoord.x), step(1.0, discontinuity.r));
-			float b = mix(step(normalizedDiscontinuity.x, 1.0 - subCoord.y), step(normalizedDiscontinuity.x, subCoord.y), step(1.0, discontinuity.g));
+			float a = mix(step(normalizedDiscontinuity.y, subCoord.x), step(normalizedDiscontinuity.y, 1.0 - subCoord.x), step(discontinuity.r, 0.25));
+			float b = mix(step(normalizedDiscontinuity.x, 1.0 - subCoord.y), step(normalizedDiscontinuity.x, subCoord.y), step(discontinuity.g, 0.25));
 			return min(a, b);	
 
 		}
@@ -341,7 +343,7 @@ float clipONDS(vec4 lightCoord, vec4 normalizedDiscontinuity, vec4 discontinuity
 	//If discontinuity only in y-axis
 	if(discontinuity.g > 0.0) {
 		
-		if(discontinuity.g == 0.5)	return step(normalizedDiscontinuity.x, 1.0 - subCoord.y);
+		if(discontinuity.g == 0.5) return step(normalizedDiscontinuity.x, 1.0 - subCoord.y);
 		else return step(normalizedDiscontinuity.x, subCoord.y);
 		
 	} 
@@ -407,9 +409,8 @@ vec4 computeDiscontinuity(vec4 normalizedLightCoord, float distanceFromLight)
 	float discType = 0.0;
 	float center = 1.0;
 	vec4 dir = getDisc(normalizedLightCoord, distanceFromLight);
-	vec4 disc = abs((dir - discType) - (center - discType)) * abs(center - discType);
-	vec2 dxdy = 0.75 + (-disc.xz + disc.yw) * 0.25;
-	vec2 color = dxdy * step(vec2(1.0), vec2(dot(disc.xy, vec2(1.0)), dot(disc.zw, vec2(1.0))));
+	vec4 disc = abs(dir - center);
+	vec2 color = (2.0 * disc.xz + disc.yw)/4.0;
 	return vec4(color, discType, 1.0);		
 		
 }
@@ -433,6 +434,15 @@ vec4 computeShadowFromSMSR(vec4 normalizedLightCoord, vec4 normalizedCameraCoord
 					
 			//post-processing
 			
+			if(bool(debug)) {
+			
+				if(fill == shadowIntensity) 
+					return vec4(0.0);
+				else 
+					return vec4(1.0);
+			
+			}
+
 			if(normalizedDiscontinuity.x <= -2.0) 
 				normalizedDiscontinuity.x = abs(normalizedDiscontinuity.x) - 2.0;
 	
@@ -446,28 +456,34 @@ vec4 computeShadowFromSMSR(vec4 normalizedLightCoord, vec4 normalizedCameraCoord
 			else if(showClippedONDS == 1 && fill != 1.0)
 				return vec4(1.0 - fill, 0.0, 0.0, 0.0);
 			else if(showSubCoord == 1)
-				return vec4(0.0, 1.0 - subCoord.x, 0.0, 0.0);
+				return vec4(0.0, 1.0 - subCoord.y, 0.0, 0.0);
 			else
-				return phong() * fill;
+				return phong(fill);
 			
 
 		} else {
 
+			if(bool(debug)) 
+				return vec4(1.0);
+
 			if(showEnteringDiscontinuity == 1 || showExitingDiscontinuity == 1 || showONDS == 1 || showSubCoord == 1)
 				return vec4(0.0, 0.0, 0.0, 0.0);
 			else
-				return phong();
+				return phong(1.0);
 			
 		}
 
 		
 	} else {
 
+		if(bool(debug)) 
+			return vec4(0.0);
+
 		if(showEnteringDiscontinuity == 1 || showExitingDiscontinuity == 1 || showONDS == 1 || showSubCoord == 1)
 			return vec4(0.0, 0.0, 0.0, 0.0);
 		else
-			return phong() * shadowIntensity;
-		
+			return phong(shadowIntensity);
+
 	}
 
 }
@@ -556,8 +572,7 @@ vec4 computeShadowFromRPCF(vec4 normalizedLightCoord, vec4 normalizedCameraCoord
 				}
 
 				vec4 disc = abs(vec4(left, right, bottom, top) - shadowMatrix[count]) * shadowMatrix[count];
-				vec2 dxdy = 0.75 + (-disc.xz + disc.yw) * 0.25;
-				vec2 color = dxdy * step(vec2(1.0), vec2(dot(disc.xy, vec2(1.0)), dot(disc.zw, vec2(1.0))));
+				vec2 color = (2.0 * disc.xz + disc.yw)/4.0;
 				discontinuityMatrix[count] = vec2(color);
 				
 			}
@@ -607,7 +622,7 @@ vec4 computeShadowFromRPCF(vec4 normalizedLightCoord, vec4 normalizedCameraCoord
 	
 	//use light sub coordinates to improve smoothness
 	shadow = illuminationCount/float(eachAxis * eachAxis);
-	return phong() * shadow;
+	return phong(shadow);
 	
 }
 
@@ -631,8 +646,10 @@ void main()
 		if(showEnteringDiscontinuity == 1 || showExitingDiscontinuity == 1 || showONDS == 1 || showSubCoord == 1)
 			color = vec4(0.0, 0.0, 0.0, 0.0);
 		else
-			color = phong() * shadow;	
+			color = phong(shadow);	
 
+		if(bool(debug)) color = vec4(0.0);
+	
 	}
 
 	gl_FragColor = color;

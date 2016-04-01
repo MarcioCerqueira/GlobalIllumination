@@ -131,6 +131,8 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glUniform1i(shadowMapDepthBiasID, shadowParams.adaptiveDepthBias);
 	GLuint debugID = glGetUniformLocation(shaderProg, "debug");
 	glUniform1i(debugID, (int)shadowParams.debug);
+	GLuint kernelOrderID = glGetUniformLocation(shaderProg, "kernelOrder");
+	glUniform1i(kernelOrderID, (int)shadowParams.kernelOrder);
 	GLuint shadowMap = glGetUniformLocation(shaderProg, "shadowMap");
 	glUniform1i(shadowMap, 0);
 
@@ -205,6 +207,8 @@ void MyGLGeometryViewer::configureRevectorization(ShadowParams shadowParams, int
 	glUniformMatrix4fv(lightMVPID, 1, GL_FALSE, &shadowParams.lightMVP[0][0]);
 	GLuint inverseLightMVPID = glGetUniformLocation(shaderProg, "inverseLightMVP");
 	glUniformMatrix4fv(inverseLightMVPID, 1, GL_FALSE, &inverseMVP[0][0]);
+	GLuint kernelOrderID = glGetUniformLocation(shaderProg, "kernelOrder");
+	glUniform1i(kernelOrderID, (int)shadowParams.kernelOrder);
 	
 	GLuint showEnteringDiscontinuityMapID = glGetUniformLocation(shaderProg, "showEnteringDiscontinuity");
 	glUniform1i(showEnteringDiscontinuityMapID, shadowParams.showEnteringDiscontinuityMap);

@@ -5,6 +5,8 @@ SceneLoader::SceneLoader(char *filename, Mesh *mesh)
 
 	this->file = std::fstream(filename);
 	this->mesh = mesh;
+	this->HSMAlpha = 0;
+	this->HSMBeta = 0;
 
 }
 
@@ -88,6 +90,10 @@ void SceneLoader::load()
 		} else if(key[0] == 'd') {
 			split >> value;
 			depthThreshold = atof(value.c_str());
+		} else if(key[0] == 'h') {
+			split >> value;
+			if(key[1] == 'a') HSMAlpha = atof(value.c_str());
+			else HSMBeta = atof(value.c_str());
 		}
 
 	}

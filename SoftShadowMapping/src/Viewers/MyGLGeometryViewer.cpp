@@ -128,6 +128,8 @@ void MyGLGeometryViewer::configurePhong(glm::vec3 lightPosition, glm::vec3 camer
 void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams) 
 {
 	
+	bool screenSpace = shadowParams.SSPCSS || shadowParams.SSABSS || shadowParams.SSSM || shadowParams.SSRBSSM;
+	
 	glm::mat4 bias;
 	bias[0][0] = 0.5;	bias[0][1] = 0;		bias[0][2] = 0;		bias[0][3] = 0.0;
 	bias[1][0] = 0;		bias[1][1] = 0.5;	bias[1][2] = 0;		bias[1][3] = 0.0;
@@ -139,6 +141,33 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glUniformMatrix4fv(lightMVPID, 1, GL_FALSE, &shadowParams.lightMVP[0][0]);
 	GLuint inverseMVPID = glGetUniformLocation(shaderProg, "inverseLightMVP");
 	glUniformMatrix4fv(inverseMVPID, 1, GL_FALSE, &glm::inverse(shadowParams.lightMVP)[0][0]);
+	
+	if(shadowParams.adaptiveSampling && shadowParams.quadTreeEvaluation) {
+
+		GLuint lightMVPsID[4];
+		char lightMVPString[10];
+		for(int index = 0; index < 4; index++) {
+			shadowParams.lightMVPs[index] = bias * shadowParams.lightMVPs[index];
+			sprintf(lightMVPString, "lightMVP%d", index);
+			lightMVPsID[index] = glGetUniformLocation(shaderProg, lightMVPString);
+			glUniformMatrix4fv(lightMVPsID[index], 1, GL_FALSE, &(shadowParams.lightMVPs[index])[0][0]);
+		}
+	
+	} else if(shadowParams.monteCarlo || (shadowParams.adaptiveSampling && !shadowParams.quadTreeEvaluation)) {
+	
+		GLuint lightMVPTransID = glGetUniformLocation(shaderProg, "lightMVPTrans");
+		for(int index = 0; index < shadowParams.numberOfSamples; index++) {
+
+			shadowParams.lightMVPs[index] = bias * shadowParams.lightMVPs[index];
+			shadowParams.lightTrans[index] = glm::vec4(shadowParams.lightMVPs[index][3][0], shadowParams.lightMVPs[index][3][1], shadowParams.lightMVPs[index][3][2], 
+				shadowParams.lightMVPs[index][3][3]);
+			if(shadowParams.adaptiveSampling) shadowParams.lightTrans[index][3] += shadowParams.accFactor[index] * 10000;
+			
+		}
+		glUniform4fv(lightMVPTransID, shadowParams.numberOfSamples, &(shadowParams.lightTrans[0])[0]);
+
+	}
+
 	GLuint shadowMapWidthID = glGetUniformLocation(shaderProg, "shadowMapWidth");
 	glUniform1i(shadowMapWidthID, shadowParams.shadowMapWidth);
 	GLuint shadowMapHeightID = glGetUniformLocation(shaderProg, "shadowMapHeight");
@@ -149,10 +178,10 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glUniform1i(windowHeightID, shadowParams.windowHeight);
 	GLuint shadowIntensityID = glGetUniformLocation(shaderProg, "shadowIntensity");
 	glUniform1f(shadowIntensityID, shadowParams.shadowIntensity);
-	GLuint accFactorID = glGetUniformLocation(shaderProg, "accFactor");
-	glUniform1f(accFactorID, shadowParams.accFactor);
+	GLuint numberOfSamplesID = glGetUniformLocation(shaderProg, "numberOfSamples");
+	glUniform1i(numberOfSamplesID, shadowParams.numberOfSamples);
 	GLuint blockerSearchSizeID = glGetUniformLocation(shaderProg, "blockerSearchSize");
-	glUniform1i(blockerSearchSizeID, shadowParams.blockerSearchSize);
+	glUniform1i(blockerSearchSizeID, shadowParams.blockerSearchSize - screenSpace);
 	GLuint kernelSizeID = glGetUniformLocation(shaderProg, "kernelSize");
 	glUniform1i(kernelSizeID, shadowParams.kernelSize);
 	GLuint lightSourceRadiusID = glGetUniformLocation(shaderProg, "lightSourceRadius");
@@ -162,11 +191,22 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		glUniform1f(blockerThresholdID, shadowParams.blockerThreshold);
 		GLuint filterThresholdID = glGetUniformLocation(shaderProg, "filterThreshold");
 		glUniform1i(filterThresholdID, shadowParams.filterThreshold);
+	} else if(shadowParams.RBSSM || shadowParams.SSRBSSM) {
+		GLuint maxSearch = glGetUniformLocation(shaderProg, "maxSearch");
+		glUniform1i(maxSearch, shadowParams.maxSearch);
+		GLuint depthThreshold = glGetUniformLocation(shaderProg, "depthThreshold");
+		glUniform1f(depthThreshold, shadowParams.depthThreshold);
+		GLuint shadowMapStep = glGetUniformLocation(shaderProg, "shadowMapStep");
+		glUniform2f(shadowMapStep, 1.0/shadowParams.shadowMapWidth, 1.0/shadowParams.shadowMapHeight);
 	}
 	GLuint SATID = glGetUniformLocation(shaderProg, "SAT");
 	glUniform1i(SATID, shadowParams.SAT);
 	GLuint monteCarloID = glGetUniformLocation(shaderProg, "monteCarlo");
 	glUniform1i(monteCarloID, shadowParams.monteCarlo);
+	GLuint adaptiveSamplingID = glGetUniformLocation(shaderProg, "adaptiveSampling");
+	glUniform1i(adaptiveSamplingID, shadowParams.adaptiveSampling);
+	GLuint adaptiveSamplingLowerAccuracyID = glGetUniformLocation(shaderProg, "adaptiveSamplingLowerAccuracy");
+	glUniform1i(adaptiveSamplingLowerAccuracyID, shadowParams.adaptiveSamplingLowerAccuracy);
 	GLuint PCSSID = glGetUniformLocation(shaderProg, "PCSS");
 	glUniform1i(PCSSID, shadowParams.PCSS);
 	GLuint ESSMID = glGetUniformLocation(shaderProg, "ESSM");
@@ -177,42 +217,58 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glUniform1i(SSABSSID, shadowParams.SSABSS);
 	GLuint SSSMID = glGetUniformLocation(shaderProg, "SSSM");
 	glUniform1i(SSSMID, shadowParams.SSSM);
+	GLuint SSRBSSMID = glGetUniformLocation(shaderProg, "SSRBSSM");
+	glUniform1i(SSRBSSMID, shadowParams.SSRBSSM);
 	configureMoments(shadowParams);
 	GLuint shadowMap = glGetUniformLocation(shaderProg, "shadowMap");
 	glUniform1i(shadowMap, 0);
 
-	if(shadowParams.monteCarlo || shadowParams.SSPCSS || shadowParams.SSABSS || shadowParams.SSSM) {
+	if(shadowParams.monteCarlo || (shadowParams.adaptiveSampling && !shadowParams.quadTreeEvaluation)) {
+		
+		GLuint shadowMapArray = glGetUniformLocation(shaderProg, "shadowMapArray");
+		glUniform1i(shadowMapArray, 1);
+
+	} else if((shadowParams.adaptiveSampling && shadowParams.quadTreeEvaluation) || screenSpace) {
 
 		GLuint vertexMap = glGetUniformLocation(shaderProg, "vertexMap");
 		glUniform1i(vertexMap, 8);
 		GLuint normalMap = glGetUniformLocation(shaderProg, "normalMap");
 		glUniform1i(normalMap, 9);
-
-		if(shadowParams.monteCarlo || shadowParams.useSoftShadowMap) {
-			GLuint accumulationMap = glGetUniformLocation(shaderProg, "softShadowMap");
-			glUniform1i(accumulationMap, 1);
-		} 
-
-		if(shadowParams.SSPCSS || shadowParams.SSABSS || shadowParams.SSSM) {
-
-			if(shadowParams.useHardShadowMap || shadowParams.usePartialAverageBlockerDepthMap) {
-				GLuint hardShadowMap = glGetUniformLocation(shaderProg, "hardShadowMap");
-				glUniform1i(hardShadowMap, 1);
+		
+		if(shadowParams.quadTreeEvaluation) {
+		
+			GLuint shadowMapID[4];
+			char shadowMapString[20];
+			for(int index = 0; index < 4; index++) {
+				sprintf(shadowMapString, "shadowMap%d", index);
+				shadowMapID[index] = glGetUniformLocation(shaderProg, shadowMapString);
+				glUniform1i(shadowMapID[index], 10 + index);
 			}
 
-		}
+		} else if(shadowParams.useSoftShadowMap) {
+		
+			GLuint accumulationMap = glGetUniformLocation(shaderProg, "softShadowMap");
+			glUniform1i(accumulationMap, 1);
+		
+		} else if(screenSpace && (shadowParams.useHardShadowMap || shadowParams.usePartialAverageBlockerDepthMap)) {
 
+			GLuint hardShadowMap = glGetUniformLocation(shaderProg, "hardShadowMap");
+			glUniform1i(hardShadowMap, 1);
+			
+		} 
 
 	} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM) {
 
 		GLuint SATShadowMap = glGetUniformLocation(shaderProg, "SATShadowMap");
 		glUniform1i(SATShadowMap, 1);
 
-		if(shadowParams.VSSM) {
-			GLuint hierarchicalShadowMap = glGetUniformLocation(shaderProg, "hierarchicalShadowMap");
-			glUniform1i(hierarchicalShadowMap, 8);
-		}
-
+	} 
+	
+	if(shadowParams.useHierarchicalShadowMap) {
+		
+		GLuint hierarchicalShadowMap = glGetUniformLocation(shaderProg, "hierarchicalShadowMap");
+		glUniform1i(hierarchicalShadowMap, 10);
+		
 	}
 
 	configureLinearization();
@@ -220,7 +276,12 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, shadowParams.shadowMap);
 
-	if(shadowParams.monteCarlo || shadowParams.SSPCSS || shadowParams.SSABSS || shadowParams.SSSM) {
+	if(shadowParams.monteCarlo || (shadowParams.adaptiveSampling && !shadowParams.quadTreeEvaluation)) {
+
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shadowParams.shadowMapArray);
+
+	} else if((shadowParams.adaptiveSampling && shadowParams.quadTreeEvaluation) || screenSpace) {
 
 		glActiveTexture(GL_TEXTURE8);
 		glBindTexture(GL_TEXTURE_2D, shadowParams.vertexMap);
@@ -228,37 +289,48 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		glActiveTexture(GL_TEXTURE9);
 		glBindTexture(GL_TEXTURE_2D, shadowParams.normalMap);
 		
-		if(shadowParams.monteCarlo || shadowParams.useSoftShadowMap) {
+		if(shadowParams.quadTreeEvaluation) {
+
+			for(int index = 0; index < 4; index++) {
+				glActiveTexture(GL_TEXTURE10 + index);
+				glBindTexture(GL_TEXTURE_2D, shadowParams.shadowMaps[index]);
+			}
+			
+		} else if(shadowParams.useSoftShadowMap) {
+
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, shadowParams.softShadowMap);
-		} 
 		
-		if(shadowParams.SSPCSS || shadowParams.SSABSS || shadowParams.SSSM) {
+		} else if(screenSpace && (shadowParams.useHardShadowMap || shadowParams.usePartialAverageBlockerDepthMap)) {
 
-			if(shadowParams.useHardShadowMap || shadowParams.usePartialAverageBlockerDepthMap) {
-				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, shadowParams.hardShadowMap);
-			}
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, shadowParams.hardShadowMap);
 			 
 		}
-
 
 	} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM) {
 
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, shadowParams.SATShadowMap);
 		
-		if(shadowParams.VSSM) {
-			glActiveTexture(GL_TEXTURE8);
-			glBindTexture(GL_TEXTURE_2D, shadowParams.hierarchicalShadowMap);
-		}
-
+	} 
+	
+	if(shadowParams.useHierarchicalShadowMap) {
+		
+		glActiveTexture(GL_TEXTURE10);
+		glBindTexture(GL_TEXTURE_2D, shadowParams.hierarchicalShadowMap);
+		
 	}
 
 	glActiveTexture(GL_TEXTURE0);
 	glDisable(GL_TEXTURE_2D);
 
-	if(shadowParams.monteCarlo || shadowParams.SSPCSS || shadowParams.SSABSS || shadowParams.SSSM) {
+	if(shadowParams.monteCarlo && (shadowParams.adaptiveSampling && !shadowParams.quadTreeEvaluation)) {
+
+		glActiveTexture(GL_TEXTURE1);
+		glDisable(GL_TEXTURE_2D_ARRAY);
+
+	} else if((shadowParams.adaptiveSampling && shadowParams.quadTreeEvaluation) || screenSpace) {
 
 		glActiveTexture(GL_TEXTURE8);
 		glDisable(GL_TEXTURE_2D);
@@ -266,9 +338,22 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		glActiveTexture(GL_TEXTURE9);
 		glDisable(GL_TEXTURE_2D);
 
-		if(shadowParams.monteCarlo || ((shadowParams.SSPCSS || shadowParams.SSABSS || shadowParams.SSSM) && (shadowParams.useHardShadowMap || shadowParams.usePartialAverageBlockerDepthMap))) {
+		if(shadowParams.quadTreeEvaluation) {
+
+			glActiveTexture(GL_TEXTURE10);
+			glDisable(GL_TEXTURE_2D);
+			glActiveTexture(GL_TEXTURE11);
+			glDisable(GL_TEXTURE_2D);
+			glActiveTexture(GL_TEXTURE12);
+			glDisable(GL_TEXTURE_2D);
+			glActiveTexture(GL_TEXTURE13);
+			glDisable(GL_TEXTURE_2D);
+		
+		} else if((screenSpace && (shadowParams.useHardShadowMap || shadowParams.usePartialAverageBlockerDepthMap))) {
+		
 			glActiveTexture(GL_TEXTURE1);
 			glDisable(GL_TEXTURE_2D);
+		
 		}
 
 	} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM) {
@@ -276,11 +361,13 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		glActiveTexture(GL_TEXTURE1);
 		glDisable(GL_TEXTURE_2D);
 
-		if(shadowParams.VSSM) {
-			glActiveTexture(GL_TEXTURE8);
-			glDisable(GL_TEXTURE_2D);
-		}
-
+	} 
+	
+	if(shadowParams.useHierarchicalShadowMap) {
+			
+		glActiveTexture(GL_TEXTURE10);
+		glDisable(GL_TEXTURE_2D);
+		
 	}
 
 }

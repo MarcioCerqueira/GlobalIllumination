@@ -8,12 +8,11 @@ uniform mat4 lightMVP;
 uniform mat3 normalMatrix;
 uniform vec3 lightPosition;
 uniform float shadowIntensity;
-uniform float accFactor;
 uniform int windowWidth;
 uniform int windowHeight;
-uniform int monteCarlo;
+uniform int shadowMapWidth;
+uniform int shadowMapHeight;
 varying vec2 f_texcoord;
-
 
 float computePreEvaluationBasedOnNormalOrientation(vec4 vertex, vec4 normal)
 {
@@ -53,18 +52,8 @@ void main()
 		
 	} 
 	
-	if(monteCarlo == 1) {
-
-		float accIntensity = texture2D(softShadowMap, f_texcoord).r;
-		shadow.r = shadow.r * accFactor + accIntensity;
-		shadow.g = 0.0;
-
-	} else {
-
-		if(computePreEvaluationBasedOnNormalOrientation(vertex, normal) == shadowIntensity)
-			shadow.r = 0.0;
-
-	}
+	if(computePreEvaluationBasedOnNormalOrientation(vertex, normal) == shadowIntensity)
+		shadow.r = 0.0;
 
 	gl_FragColor = vec4(shadow, 0.0, 1.0);
 

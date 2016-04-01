@@ -32,16 +32,19 @@ uniform int zFar;
 uniform int useTextureForColoring;
 uniform int useMeshColor;
 uniform int useAdaptiveDepthBias;
+uniform int debug;
+uniform int kernelOrder;
 uniform mat4 MVP;
 uniform mat4 lightMVP;
 
-vec4 phong()
+vec4 phong(float shadow)
 {
 
 	vec4 light_ambient = vec4(0.4, 0.4, 0.4, 1);
     vec4 light_specular = vec4(0.25, 0.25, 0.25, 1);
     vec4 light_diffuse = vec4(0.5, 0.5, 0.5, 1);
     float shininess = 10.0;
+	float specShadow = shadow - shadowIntensity;
 
     vec3 L = normalize(lightPosition.xyz - v);   
     vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0)  
@@ -54,7 +57,7 @@ vec4 phong()
     vec4 Idiff = light_diffuse * max(dot(N,L), 0.0);    
    
     // calculate Specular Term:
-    vec4 Ispec = light_specular * pow(max(dot(R,E),0.0), 0.3 * shininess);
+    vec4 Ispec = specShadow * light_specular * pow(max(dot(R,E),0.0), 0.3 * shininess);
 
     vec4 sceneColor;
    
@@ -72,7 +75,7 @@ vec4 phong()
 	else
 		sceneColor = gl_FrontLightModelProduct.sceneColor;
    
-	return sceneColor * (Idiff + Ispec + Iamb);  
+	return shadow * sceneColor * (Idiff + Ispec + Iamb);  
    
 }
 
@@ -136,16 +139,16 @@ float PCF(vec3 normalizedShadowCoord)
 	float incrWidth = 1.0/float(shadowMapWidth);
 	float incrHeight = 1.0/float(shadowMapHeight);
 	float illuminationCount = 0;
-	int eachAxis = 3;
-	int numberOfSamples = eachAxis * eachAxis;
-	float offset = (float(eachAxis) - 1.0) * 0.5;
+	int numberOfSamples = kernelOrder * kernelOrder;
+	float offset = 1;//(float(kernelOrder) - 1.0) * 0.5;
+	float stepSize = 2 * offset/float(kernelOrder);
 	float distanceFromLight;
 
 	int count = 0;
 	illuminationCount = 0;
 
-	for(float w = -offset; w <= offset; w++) {
-		for(float h = -offset; h <= offset; h++) {
+	for(float w = -offset; w <= offset; w+=stepSize) {
+		for(float h = -offset; h <= offset; h+=stepSize) {
 		
 			if(tricubicPCF == 1)
 				distanceFromLight = textureBicubic(shadowMap, vec2(normalizedShadowCoord.s + w * incrWidth, normalizedShadowCoord.t + h * incrHeight)).z;
@@ -162,21 +165,22 @@ float PCF(vec3 normalizedShadowCoord)
 		}
 	}
 
-	return float(illuminationCount)/float(numberOfSamples);
+	return float(illuminationCount)/float(count);
 
 }
 
-float chebyshevUpperBound(vec2 moments, float distanceFromLight)
+float chebyshevUpperBound(vec2 moments, float distanceToLight)
 {
 	
-	if (distanceFromLight <= moments.x)
+	if (distanceToLight <= moments.x)
 		return 1.0;
 	
 	float variance = moments.y - (moments.x * moments.x);
-	float d = distanceFromLight - moments.x;
+	float d = distanceToLight - moments.x;
 	float p_max = variance / (variance + d*d);
-	p_max = (p_max - 0.2) / (1.0 - 0.2);
-	return clamp(p_max, shadowIntensity, 1.0);
+	float p = distanceToLight <= moments.x;
+	p_max = max(p, p_max);
+	return mix(p_max, 1.0, shadowIntensity);
 
 }
 
@@ -193,7 +197,7 @@ float varianceShadowMapping(vec3 normalizedShadowCoord)
 float exponentialShadowMapping(vec3 normalizedShadowCoord)
 {
 
-	float c = 60.0;
+	float c = 80.0;
 	float e2 = texture2D(shadowMap, vec2(normalizedShadowCoord.st)).x;
 	e2 = exp(c * e2);
 
@@ -331,7 +335,6 @@ float computePreEvaluationBasedOnNormalOrientation()
 void main()
 {	
 
-	vec4 color = phong();
 	vec4 normalizedShadowCoord = shadowCoord / shadowCoord.w;
 	//if(useAdaptiveDepthBias == 1) 
 		//normalizedShadowCoord.z = adaptiveDepthBias(normalizedShadowCoord);
@@ -360,6 +363,17 @@ void main()
 
 	}
 
-	gl_FragColor = shadow * color;
+	if(bool(debug)) {
+	
+		if(shadow == shadowIntensity)	
+			gl_FragColor = vec4(0.0);
+		else	
+			gl_FragColor = vec4(1.0);
+	
+	} else { 
+		
+		gl_FragColor = phong(shadow);
+	
+	}
 
 }

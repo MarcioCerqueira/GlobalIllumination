@@ -39,8 +39,6 @@ enum
 	GAUSSIAN_X_MAP_COLOR = 3,
 	GAUSSIAN_Y_MAP_DEPTH = 4,
 	GAUSSIAN_Y_MAP_COLOR = 5,
-	RESULTING_SHADOW_MAP_DEPTH = 6,
-	RESULTING_SHADOW_MAP_COLOR = 7,
 };
 
 enum
@@ -87,7 +85,6 @@ GLuint sceneTextures[4];
 GLuint shadowFrameBuffer;
 GLuint gaussianXFrameBuffer;
 GLuint gaussianYFrameBuffer;
-GLuint sceneFrameBuffer;
 
 glm::vec3 cameraEye;
 glm::vec3 cameraAt;
@@ -280,6 +277,7 @@ void displaySceneFromCameraPOV()
 	else
 		shadowParams.shadowMap = textures[SHADOW_MAP_DEPTH];
 	
+	shadowParams.kernelOrder = gaussianFilter->getOrder();
 	shadowParams.lightMVP = lightMVP;
 	shadowParams.lightMV = lightMV;
 	shadowParams.lightP = lightP;
@@ -313,7 +311,7 @@ void renderSMSR()
 	}
 
 	shadowParams.shadowMap = textures[SHADOW_MAP_DEPTH];
-
+	shadowParams.kernelOrder = gaussianFilter->getOrder();
 	shadowParams.lightMVP = lightMVP;
 	shadowParams.lightMV = lightMV;
 	shadowParams.lightP = lightP;
@@ -335,14 +333,14 @@ void display()
 	//Rob Basler in http://fabiensanglard.net/shadowmappingVSM/ found out that the color buffer, 
 	//when used to store depth, should be cleared to 1.0 to run properly
 	
-	glClearColor(1.0f, 1.0f, 1.0f, 1.0);
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0);
 	glBindFramebuffer(GL_FRAMEBUFFER, shadowFrameBuffer);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	displaySceneFromLightPOV();
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);	
 	
 	if(shadowParams.VSM || shadowParams.ESM || shadowParams.EVSM || shadowParams.MSM) {
-
+		
 		if(shadowParams.VSM || shadowParams.MSM || shadowParams.EVSM)
 			myGLTextureViewer.setShaderProg(shaderProg[GAUSSIAN_FILTER_SHADER]);
 		else
@@ -365,7 +363,7 @@ void display()
 		//we must build the mip-map version of the final blurred map in order to VSM run correctly
 		glBindTexture(GL_TEXTURE_2D, textures[GAUSSIAN_Y_MAP_COLOR]);
 		glGenerateMipmap(GL_TEXTURE_2D);
-
+		
 	}
 	
 	
@@ -439,6 +437,14 @@ void keyboard(unsigned char key, int x, int y)
 		animationOn = true;
 		debugVisualization();
 		animationOn = false;
+		break;
+	case 't':    
+		cameraEye[0] = 0.0;
+		cameraEye[1] = -3.0;
+		cameraEye[2] = 1.0;
+		cameraAt[0] = 0.0;
+		cameraAt[1] = -28.0;
+		cameraAt[2] = 41.0;
 		break;
 	}
 
@@ -822,8 +828,6 @@ void initGL(char *configurationFile) {
 		glGenFramebuffers(1, &gaussianXFrameBuffer);
 	if(gaussianYFrameBuffer == 0)
 		glGenFramebuffers(1, &gaussianYFrameBuffer);
-	if(sceneFrameBuffer == 0)
-		glGenFramebuffers(1, &sceneFrameBuffer);
 	if(sceneVBO[0] == 0)
 		glGenBuffers(5, sceneVBO);
 	if(sceneTextures[0] == 0)
@@ -851,7 +855,7 @@ void initGL(char *configurationFile) {
 	shadowParams.maxSearch = 256;
 	shadowParams.depthThreshold = sceneLoader->getDepthThreshold();
 	resetShadowParams();
-	shadowParams.naive = true;
+	shadowParams.VSM = true;
 	shadowParams.adaptiveDepthBias = true;
 	shadowParams.shadowIntensity = 0.25;
 	shadowParams.debug = false;
@@ -866,13 +870,11 @@ void initGL(char *configurationFile) {
 	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, SHADOW_MAP_COLOR, shadowMapWidth, shadowMapHeight);
 	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, GAUSSIAN_X_MAP_COLOR, windowWidth, windowHeight);
 	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, GAUSSIAN_Y_MAP_COLOR, windowWidth, windowHeight);
-	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, RESULTING_SHADOW_MAP_COLOR, windowWidth, windowHeight);
-
+	
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, SHADOW_MAP_DEPTH, shadowMapWidth, shadowMapHeight);
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, GAUSSIAN_X_MAP_DEPTH, windowWidth, windowHeight);
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, GAUSSIAN_Y_MAP_DEPTH, windowWidth, windowHeight);
-	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, RESULTING_SHADOW_MAP_DEPTH, windowWidth, windowHeight);
-
+	
 	glBindFramebuffer(GL_FRAMEBUFFER, shadowFrameBuffer);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[SHADOW_MAP_DEPTH], 0);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[SHADOW_MAP_COLOR], 0);
@@ -894,12 +896,6 @@ void initGL(char *configurationFile) {
 	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE)
 		printf("FBO OK\n");
 
-	glBindFramebuffer(GL_FRAMEBUFFER, sceneFrameBuffer);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[RESULTING_SHADOW_MAP_DEPTH], 0);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[RESULTING_SHADOW_MAP_COLOR], 0);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE)
-		printf("FBO OK\n");
 	
 }
 
@@ -928,8 +924,8 @@ int main(int argc, char **argv) {
 	initShader("Shaders/ExponentialMoments", EXPONENTIAL_MOMENT_SHADER);
 	initShader("Shaders/GaussianFilter", GAUSSIAN_FILTER_SHADER);
 	initShader("Shaders/LogGaussianFilter", LOG_GAUSSIAN_FILTER_SHADER);
-	initShader("Shaders/SMSR", SMSR_SHADER);
-	initShader("Shaders/RSMSS", RSMSS_SHADER);
+	initShader("Shaders/Unoptimized/SMSR", SMSR_SHADER);
+	initShader("Shaders/Unoptimized/RSMSS", RSMSS_SHADER);
 	glUseProgram(0); 
 
 	glutMainLoop();

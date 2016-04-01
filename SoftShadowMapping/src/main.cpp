@@ -13,6 +13,7 @@
 //Screen-Space Percentage-Closer Soft Shadows - M. MohammadBagher et al. Screen-Space Percentage-Closer Soft Shadows. 2010.
 //Variance Soft Shadow Mapping - B. Yang et al. Variance Soft Shadow Mapping. 2010.
 //Screen Space Anisotropic Blurred Soft Shadows - Z. Zheng and S. Saito. Screen Space Anisotropic Blurred Soft Shadows. 2011.
+//Adaptive Light Source Sampling - M. Schwärzler et al. - Fast Accurate Soft Shadows with Adaptive Light Source Sampling. 2012.
 //Exponential Soft Shadow Mapping - L. Shen et al. Exponential Soft Shadow Mapping. 2013.
 //Separable Soft Shadow Mapping - J. M. Buades et al. Separable Soft Shadow Mapping. 2015.
 //Moment Soft Shadow Mapping - C. Peters et al. Beyond Hard Shadows: Moment Shadow Maps for Single Scattering, Soft Shadows and Translucent Occluders. 2016.
@@ -25,13 +26,16 @@
 #include <math.h>
 #include <GL/glew.h>
 #include <GL/glut.h>
+#include <time.h>
 #include "Viewers\MyGLTextureViewer.h"
 #include "Viewers\MyGLGeometryViewer.h"
 #include "Viewers\shader.h"
 #include "Viewers\ShadowParams.h"
 #include "IO\SceneLoader.h"
 #include "Scene\Mesh.h"
-#include "Scene\LightSource.h"
+#include "Scene\LightSource\LightSource.h"
+#include "Scene\LightSource\UniformSampledLightSource.h"
+#include "Scene\LightSource\QuadTreeLightSource.h"
 #include "Image.h"
 #include "Filter.h"
 
@@ -53,7 +57,17 @@ enum
 	VERTEX_MAP_COLOR = 13,
 	NORMAL_MAP_COLOR = 14,
 	PARTIAL_BLOCKER_SEARCH_MAP_DEPTH = 15,
-	PARTIAL_BLOCKER_SEARCH_MAP_COLOR = 16
+	PARTIAL_BLOCKER_SEARCH_MAP_COLOR = 16,
+	LEFT_TOP_SHADOW_MAP_DEPTH = 17,
+	LEFT_TOP_SHADOW_MAP_COLOR = 18,
+	RIGHT_TOP_SHADOW_MAP_DEPTH = 19,
+	RIGHT_TOP_SHADOW_MAP_COLOR = 20,
+	LEFT_BOTTOM_SHADOW_MAP_DEPTH = 21,
+	LEFT_BOTTOM_SHADOW_MAP_COLOR = 22,
+	RIGHT_BOTTOM_SHADOW_MAP_DEPTH = 23,
+	RIGHT_BOTTOM_SHADOW_MAP_COLOR = 24,
+	QUAD_TREE_REPROJECTION_DEPTH = 25,
+	QUAD_TREE_REPROJECTION_COLOR = 26
 };
 
 enum
@@ -64,16 +78,21 @@ enum
 	GBUFFER_HARD_SHADOW_SHADER = 3,
 	GBUFFER_FINAL_RENDERING_SHADER = 4,
 	GBUFFER_SHADER = 5,
-	SOFT_SHADOW_SHADER = 6,
-	MOMENT_SHADER = 7,
-	EXPONENTIAL_SHADER = 8,
-	SAT_HORIZONTAL_PASS_SHADER = 9,
-	SAT_VERTICAL_PASS_SHADER = 10,
-	PREPARE_MIN_MAX_SHADER = 11,
-	MIN_MAX_SHADER = 12,
-	PARTIAL_BLOCKER_SEARCH_SHADER = 13,
-	PARTIAL_SHADOW_FILTERING_SHADER = 14,
-	SCREEN_SPACE_SOFT_SHADOW_SHADER = 15
+	GBUFFER_RSMSS_SHADER = 6,
+	SOFT_SHADOW_SHADER = 7,
+	MOMENT_SHADER = 8,
+	EXPONENTIAL_SHADER = 9,
+	SAT_HORIZONTAL_PASS_SHADER = 10,
+	SAT_VERTICAL_PASS_SHADER = 11,
+	PREPARE_MIN_MAX_SHADER = 12,
+	MIN_MAX_SHADER = 13,
+	PARTIAL_BLOCKER_SEARCH_SHADER = 14,
+	PARTIAL_SHADOW_FILTERING_SHADER = 15,
+	SCREEN_SPACE_SOFT_SHADOW_SHADER = 16,
+	RBSSM_SHADER = 17,
+	QUAD_TREE_REPROJECTION_SHADER = 18,
+	QUAD_TREE_EVALUATION_SHADER = 19,
+	ACCURATE_SOFT_SHADOW_SHADER = 20
 };
 
 enum
@@ -85,7 +104,12 @@ enum
 	SOFT_SHADOW_FRAMEBUFFER = 4,
 	HARD_SHADOW_FRAMEBUFFER = 5,
 	GBUFFER_FRAMEBUFFER = 6,
-	PARTIAL_BLOCKER_SEARCH_MAP_FRAMEBUFFER = 7
+	PARTIAL_BLOCKER_SEARCH_MAP_FRAMEBUFFER = 7,
+	LEFT_TOP_SHADOW_MAP_FRAMEBUFFER = 8,
+	RIGHT_TOP_SHADOW_MAP_FRAMEBUFFER = 9,
+	LEFT_BOTTOM_SHADOW_MAP_FRAMEBUFFER = 10,
+	RIGHT_BOTTOM_SHADOW_MAP_FRAMEBUFFER = 11,
+	QUAD_TREE_REPROJECTION_FRAMEBUFFER = 12,
 };
 
 bool temp = false;
@@ -109,24 +133,26 @@ ShadowParams shadowParams;
 Mesh *scene;
 SceneLoader *sceneLoader;
 LightSource *lightSource;
+UniformSampledLightSource *uniformSampledLightSource;
+QuadTreeLightSource *quadTreeLightSource;
 Filter *bilateralFilter;
 
-GLuint textures[20];
-GLuint frameBuffer[10];
+GLuint textureArray[1];
+GLuint textures[30];
+GLuint frameBuffer[20];
 GLuint sceneVBO[5];
 GLuint sceneTextures[4];
+GLuint queryObject[1];
 
 glm::vec3 cameraEye;
 glm::vec3 cameraAt;
 glm::vec3 cameraUp;
-glm::mat4 lightMVP;	
-glm::mat4 lightMV;
-glm::mat4 lightP;
+glm::mat4 lightMVP;
 
 GLuint ProgramObject = 0;
 GLuint VertexShaderObject = 0;
 GLuint FragmentShaderObject = 0;
-GLuint shaderVS, shaderFS, shaderProg[20];   // handles to objects
+GLuint shaderVS, shaderFS, shaderProg[25];   // handles to objects
 GLint  linked;
 
 float translationVector[3] = {0.0, 0.0, 0.0};
@@ -145,7 +171,19 @@ bool stop = false;
 
 int vel = 1;
 float animation = -1800;
-int pointLightSample = -1;
+
+bool quadTreeShadowMapIndices[17][17];
+int maxLevel = 4;
+int quadTreeShadowMapSamples = 0;
+
+double cpu_time(void)
+{
+
+	double value;
+	value = (double) clock () / (double) CLOCKS_PER_SEC;
+	return value;
+
+}
 
 void calculateFPS()
 {
@@ -189,7 +227,7 @@ void displayScene()
 	myGLGeometryViewer.setProjectionMatrix(projection);
 	myGLGeometryViewer.setViewMatrix(view);
 	myGLGeometryViewer.setModelMatrix(model);
-	myGLGeometryViewer.configurePhong(lightSource->getEye(pointLightSample), cameraEye);
+	myGLGeometryViewer.configurePhong(lightSource->getEye(), cameraEye);
 	
 	//glColor3f(0.0, 1.0, 0.0);
 	myGLGeometryViewer.loadVBOs(sceneVBO, scene);
@@ -203,9 +241,16 @@ void updateLight()
 
 	lightSource->setEye(glm::vec3(sceneLoader->getLightPosition()[0] + lightTranslationVector[0], sceneLoader->getLightPosition()[1] + lightTranslationVector[1], 
 		sceneLoader->getLightPosition()[2] + lightTranslationVector[2]));
+	uniformSampledLightSource->setEye(glm::vec3(sceneLoader->getLightPosition()[0] + lightTranslationVector[0], sceneLoader->getLightPosition()[1] + lightTranslationVector[1], 
+		sceneLoader->getLightPosition()[2] + lightTranslationVector[2]));
+	quadTreeLightSource->setEye(glm::vec3(sceneLoader->getLightPosition()[0] + lightTranslationVector[0], sceneLoader->getLightPosition()[1] + lightTranslationVector[1], 
+		sceneLoader->getLightPosition()[2] + lightTranslationVector[2]));
 
-	if(animationOn)
-		lightSource->setEye(glm::mat3(glm::rotate((float)animation/10, glm::vec3(0, 1, 0))) * lightSource->getEye(pointLightSample));
+	if(animationOn) {
+		lightSource->setEye(glm::mat3(glm::rotate((float)animation/10, glm::vec3(0, 1, 0))) * lightSource->getEye());
+		uniformSampledLightSource->setEye(glm::mat3(glm::rotate((float)animation/10, glm::vec3(0, 1, 0))) * ((LightSource*)uniformSampledLightSource)->getEye());
+		quadTreeLightSource->setEye(glm::mat3(glm::rotate((float)animation/10, glm::vec3(0, 1, 0))) * ((LightSource*)quadTreeLightSource)->getEye());
+	}
 
 }
 
@@ -214,7 +259,7 @@ void displaySceneFromLightPOV()
 
 	glViewport(0, 0, shadowMapWidth, shadowMapHeight);
 	
-	updateLight();
+	if(!shadowParams.monteCarlo && !shadowParams.adaptiveSampling) updateLight();
 
 	if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.MSSM) {
 		glUseProgram(shaderProg[MOMENT_SHADER]);
@@ -229,12 +274,12 @@ void displaySceneFromLightPOV()
 		glUseProgram(shaderProg[SCENE_SHADER]);
 		myGLGeometryViewer.setShaderProg(shaderProg[SCENE_SHADER]);
 	}
-
+	
 	glPolygonOffset(4.0f, 20.0f);
 	glEnable(GL_POLYGON_OFFSET_FILL);
 
-	myGLGeometryViewer.setEye(lightSource->getEye(pointLightSample));
-	myGLGeometryViewer.setLook(lightSource->getAt(pointLightSample));
+	myGLGeometryViewer.setEye(lightSource->getEye());
+	myGLGeometryViewer.setLook(lightSource->getAt());
 	myGLGeometryViewer.setUp(lightSource->getUp());
 	myGLGeometryViewer.configureAmbient(shadowMapWidth, shadowMapHeight);
 	myGLGeometryViewer.setIsCameraViewpoint(false);
@@ -249,9 +294,7 @@ void displaySceneFromLightPOV()
 	model *= glm::rotate(rotationAngles[2], glm::vec3(0, 0, 1));
 
 	lightMVP = projection * view * model;
-	lightMV = view * model;
-	lightP = projection;
-
+	
 	displayScene();
 	glUseProgram(0);
 
@@ -264,21 +307,23 @@ void displaySceneFromCameraPOV(GLuint shader)
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	
 	updateLight();
-	lightSource->setEye(glm::mat3(glm::rotate((float)180.0, glm::vec3(0, 1, 0))) * lightSource->getEye(pointLightSample));
-
+	lightSource->setEye(glm::mat3(glm::rotate((float)180.0, glm::vec3(0, 1, 0))) * lightSource->getEye());
+	
 	glUseProgram(shader);
 	myGLGeometryViewer.setShaderProg(shader);
 	shadowParams.shadowMap = textures[SHADOW_MAP_DEPTH];
-	if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM) {
+	if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM)  {
 		if(shadowParams.SAT)
 			shadowParams.SATShadowMap = textures[SAT_SHADOW_MAP_COLOR];
 		else
 			shadowParams.SATShadowMap = textures[SHADOW_MAP_COLOR];
-		if(shadowParams.VSSM)
-			shadowParams.hierarchicalShadowMap = textures[HIERARCHICAL_SHADOW_MAP_COLOR];
 	} else {
 		shadowParams.softShadowMap = textures[SOFT_SHADOW_MAP_COLOR];
 	}
+	if(shadowParams.useHierarchicalShadowMap) 
+		shadowParams.hierarchicalShadowMap = textures[HIERARCHICAL_SHADOW_MAP_COLOR];
+	if(shadowParams.monteCarlo || shadowParams.adaptiveSampling)
+		shadowParams.shadowMapArray = textureArray[0];
 
 	shadowParams.lightMVP = lightMVP;
 
@@ -298,10 +343,13 @@ void displaySceneFromGBuffer(GLuint shader)
 {
 
 	glViewport(0, 0, windowWidth, windowHeight);
+	
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	
-	updateLight();
-	lightSource->setEye(glm::mat3(glm::rotate((float)180.0, glm::vec3(0, 1, 0))) * lightSource->getEye(pointLightSample));
+	if(!shadowParams.adaptiveSampling) {
+		updateLight();
+		lightSource->setEye(glm::mat3(glm::rotate((float)180.0, glm::vec3(0, 1, 0))) * lightSource->getEye());
+	}
 
 	glUseProgram(shader);
 	myGLGeometryViewer.setShaderProg(shader);
@@ -316,7 +364,9 @@ void displaySceneFromGBuffer(GLuint shader)
 		shadowParams.hardShadowMap = textures[HARD_SHADOW_MAP_COLOR];
 	if(shadowParams.usePartialAverageBlockerDepthMap)
 		shadowParams.hardShadowMap = textures[PARTIAL_BLOCKER_SEARCH_MAP_COLOR];
-	if(shadowParams.SSPCSS || shadowParams.SSABSS || shadowParams.SSSM) 
+	if(shadowParams.useHierarchicalShadowMap) 
+		shadowParams.hierarchicalShadowMap = textures[HIERARCHICAL_SHADOW_MAP_COLOR];
+	if(shadowParams.SSPCSS || shadowParams.SSABSS || shadowParams.SSSM || shadowParams.SSRBSSM) 
 		myGLTextureViewer.configureSeparableFilter(bilateralFilter->getOrder(), bilateralFilter->getKernel(), false, false, bilateralFilter->getSigmaSpace(), 
 			bilateralFilter->getSigmaColor());
 	
@@ -335,11 +385,224 @@ void displaySceneFromGBuffer(GLuint shader)
 	model *= glm::rotate(rotationAngles[2], glm::vec3(0, 0, 1));
 
 	myGLGeometryViewer.setModelMatrix(model);
-	myGLGeometryViewer.configurePhong(lightSource->getEye(pointLightSample), cameraEye);
+	myGLGeometryViewer.configurePhong(lightSource->getEye(), cameraEye);
 
 	myGLTextureViewer.drawTextureQuad();
 	
 	glUseProgram(0);
+
+}
+
+double qBegin, qEnd, qSum;
+double qBegin2, qEnd2, qSum2;
+double qBegin3, qEnd3, qSum3;
+
+bool evaluateSubAreaLightSource(QuadTreeLightSource *quadTree, int *sampleIndices, int *frameBufferIndices)
+{
+
+	qBegin = cpu_time();
+	for(int index = 0; index < 4; index++) {
+
+		lightSource->setEye(quadTree->getEye(sampleIndices[index]));
+		lightSource->setAt(quadTree->getAt(sampleIndices[index]));
+		
+		glClearColor(1.0f, 1.0f, 1.0f, 1.0);
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBufferIndices[index]);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		displaySceneFromLightPOV();
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		shadowParams.lightMVPs[index] = lightMVP;
+	
+	}
+	glFinish();
+	qEnd = cpu_time();
+	qSum += qEnd - qBegin;
+
+	lightSource->setEye(((LightSource*)quadTree)->getEye());
+	lightSource->setAt(((LightSource*)quadTree)->getAt());
+
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_POLYGON_OFFSET_FILL);
+	
+	qBegin2 = cpu_time();
+	glClearColor(0.63f, 0.82f, 0.96f, 1.0);
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[QUAD_TREE_REPROJECTION_FRAMEBUFFER]);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	displaySceneFromGBuffer(shaderProg[QUAD_TREE_REPROJECTION_SHADER]);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glFinish();
+	qEnd2 = cpu_time();
+	qSum2 += qEnd2 - qBegin2;
+
+	int div = 1;
+	if(shadowParams.adaptiveSamplingLowerAccuracy) div = 4;
+
+	qBegin3 = cpu_time();
+	glBeginQuery(GL_ANY_SAMPLES_PASSED, queryObject[0]);
+	myGLTextureViewer.setShaderProg(shaderProg[QUAD_TREE_EVALUATION_SHADER]);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glViewport(0, 0, windowWidth/div, windowHeight/div);
+	myGLTextureViewer.drawTextureOnShader(textures[QUAD_TREE_REPROJECTION_COLOR], windowWidth/div, windowHeight/div);
+	glEndQuery(GL_ANY_SAMPLES_PASSED);
+	
+	GLuint output;
+	glGetQueryObjectuiv(queryObject[0], GL_QUERY_RESULT, &output);
+	
+	glFinish();
+	qEnd3 = cpu_time();
+	qSum3 += qEnd3 - qBegin3;
+	return (bool)output;
+
+}
+
+void evaluateAreaLightSource(QuadTreeLightSource *quadTree, int *sampleIndices, int *frameBufferIndices) 
+{
+	
+	if(quadTree->getLevel() == maxLevel) return;
+
+	QuadTreeLightSource *tempNode = NULL;
+	bool isSubdivisionRequired = evaluateSubAreaLightSource(quadTree, sampleIndices, frameBufferIndices);
+	
+	if(isSubdivisionRequired) {
+
+		quadTree->subdivide();
+		
+		for(int childNode = 0; childNode < 4; childNode++) {
+			tempNode = quadTree->getChildNode(childNode);
+			evaluateAreaLightSource(tempNode, sampleIndices, frameBufferIndices);
+		}
+
+	}
+	
+}
+
+void renderSubAreaLightSource(QuadTreeLightSource *quadTree, int nodeIndex) 
+{
+
+	int level = quadTree->getLevel();
+	int childFactor = 16/powf(2, level);
+	int parentFactor = powf(2, level);
+	
+	for(int sample = 0; sample < 4; sample++) {
+
+		int x = (sample % 2) * childFactor + (nodeIndex % parentFactor) * childFactor;
+		int y = (sample / 2) * childFactor + (nodeIndex / parentFactor) * childFactor;
+		
+		if(quadTreeShadowMapIndices[x][y]) continue;
+		else quadTreeShadowMapIndices[x][y] = true;
+		
+		lightSource->setEye(quadTree->getEye(sample));
+		lightSource->setAt(quadTree->getAt(sample));
+		
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
+		glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, textureArray[0], 0, quadTreeShadowMapSamples);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_COLOR], 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		glClearColor(1.0f, 1.0f, 1.0f, 1.0);
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		displaySceneFromLightPOV();
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		
+		shadowParams.lightMVPs[quadTreeShadowMapSamples] = lightMVP;
+		shadowParams.accFactor[quadTreeShadowMapSamples] = level;
+		quadTreeShadowMapSamples++;
+
+	}
+
+}
+
+void renderAreaLightSource(QuadTreeLightSource *quadTree, int nodeIndex) 
+{
+
+	if(quadTree->hasAnyChildren()) {
+
+		QuadTreeLightSource *tempNode = NULL;
+		
+		int childIndex[4] = {0};
+		int level = quadTree->getLevel();
+
+		int div = powf(2, level);
+		int	x = nodeIndex % div;
+		int	y = nodeIndex / div;
+		int baseIndex = 2 * x + powf(2, level + 2) * y;
+		childIndex[0] = baseIndex;
+		childIndex[1] = baseIndex + 1;
+		childIndex[2] = baseIndex + powf(2, level + 1);
+		childIndex[3] = baseIndex + powf(2, level + 1) + 1;
+		
+		for(int childNode = 0; childNode < 4; childNode++) {
+			tempNode = quadTree->getChildNode(childNode);
+			renderAreaLightSource(tempNode, childIndex[childNode]);
+		}
+
+	} else {
+
+		renderSubAreaLightSource(quadTree, nodeIndex);
+
+	}
+	
+}
+
+void renderHSM()
+{
+
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HIERARCHICAL_SHADOW_FRAMEBUFFER]);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[HIERARCHICAL_SHADOW_MAP_DEPTH], 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[HIERARCHICAL_SHADOW_MAP_COLOR], 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		
+	myGLTextureViewer.setShaderProg(shaderProg[PREPARE_MIN_MAX_SHADER]);
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HIERARCHICAL_SHADOW_FRAMEBUFFER]);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glViewport(0, 0, shadowMapWidth, shadowMapHeight);
+	glUseProgram(shaderProg[PREPARE_MIN_MAX_SHADER]);
+	glUniform1f(glGetUniformLocation(shaderProg[PREPARE_MIN_MAX_SHADER], "HSMAlpha"), shadowParams.HSMAlpha);
+	glUniform1f(glGetUniformLocation(shaderProg[PREPARE_MIN_MAX_SHADER], "HSMBeta"), shadowParams.HSMBeta);
+	myGLTextureViewer.drawTextureOnShader(textures[SHADOW_MAP_DEPTH], shadowMapWidth, shadowMapHeight);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	int m = std::logf(shadowMapWidth)/std::logf(2);
+	int factor;
+
+	for(int iteration = 1; iteration < m; iteration++) {
+		
+		factor = powf(2.0, iteration);
+		
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_DEPTH], 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_COLOR], iteration);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		
+		myGLTextureViewer.setShaderProg(shaderProg[MIN_MAX_SHADER]);
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glViewport(0, 0, shadowMapWidth/factor, shadowMapHeight/factor);
+		glUseProgram(shaderProg[MIN_MAX_SHADER]);
+		glUniform1i(glGetUniformLocation(shaderProg[MIN_MAX_SHADER], "iteration"), iteration);
+		myGLTextureViewer.drawTextureOnShader(textures[HIERARCHICAL_SHADOW_MAP_COLOR], shadowMapWidth/factor, shadowMapHeight/factor);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HIERARCHICAL_SHADOW_FRAMEBUFFER]);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[HIERARCHICAL_SHADOW_MAP_DEPTH], 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[HIERARCHICAL_SHADOW_MAP_COLOR], iteration);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		
+		myGLTextureViewer.setShaderProg(shaderProg[COPY_IMAGE_SHADER]);
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HIERARCHICAL_SHADOW_FRAMEBUFFER]);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glViewport(0, 0, shadowMapWidth/factor, shadowMapHeight/factor);
+		myGLTextureViewer.drawTextureOnShader(textures[TEMP_SHADOW_MAP_COLOR], shadowMapWidth/factor, shadowMapHeight/factor);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	}
+		
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_DEPTH], 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_COLOR], 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 }
 
@@ -354,47 +617,127 @@ void renderMonteCarlo()
 	myGLTextureViewer.drawTextureOnShader(textures[SHADOW_MAP_COLOR], windowWidth, windowHeight);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	
-	pointLightSample = -1;
+	updateLight();
+
+	lightSource->setEye(((LightSource*)uniformSampledLightSource)->getEye());
+	lightSource->setAt(((LightSource*)uniformSampledLightSource)->getAt());
+
+	int pointLightSample = 0;
 	
+	while(pointLightSample < uniformSampledLightSource->getNumberOfPointLights()) {
+
+		lightSource->setEye(uniformSampledLightSource->getEye(pointLightSample));
+		lightSource->setAt(uniformSampledLightSource->getAt(pointLightSample));
+	
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
+		glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, textureArray[0], 0, pointLightSample);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_COLOR], 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		glClearColor(1.0f, 1.0f, 1.0f, 1.0);
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		displaySceneFromLightPOV();
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		
+		shadowParams.lightMVPs[pointLightSample] = lightMVP;
+		pointLightSample++;
+
+	}
+
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_DEPTH], 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_COLOR], 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	lightSource->setEye(((LightSource*)uniformSampledLightSource)->getEye());
+	lightSource->setAt(((LightSource*)uniformSampledLightSource)->getAt());
+
 	glClearColor(0.63f, 0.82f, 0.96f, 1.0);
+	displaySceneFromCameraPOV(shaderProg[ACCURATE_SOFT_SHADOW_SHADER]);
+
+}
+
+void renderAdaptiveLightSourceSampling()
+{
+
+	//double begin = cpu_time();
+	myGLTextureViewer.setShaderProg(shaderProg[CLEAR_IMAGE_SHADER]);
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0);
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[SOFT_SHADOW_FRAMEBUFFER]);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glViewport(0, 0, windowWidth, windowHeight);
+	myGLTextureViewer.drawTextureOnShader(textures[SHADOW_MAP_COLOR], windowWidth, windowHeight);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	
+	updateLight();
+	quadTreeLightSource->buildFirstLevel();
+
+	lightSource->setEye(((LightSource*)quadTreeLightSource)->getEye());
+	lightSource->setAt(((LightSource*)quadTreeLightSource)->getAt());
+	
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0);
 	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[GBUFFER_FRAMEBUFFER]);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	displaySceneFromCameraPOV(shaderProg[GBUFFER_SHADER]);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	
-	pointLightSample = 0;
-	
-	while(pointLightSample < lightSource->getNumberOfPointLights()) {
+	int sampleIndices[4] = {0, 1, 2, 3};
+	int frameBufferIndices[4] = {};
+	for(int x = 0; x < 17; x++) for(int y = 0; y < 17; y++) quadTreeShadowMapIndices[x][y] = false;
 
-		glClearColor(1.0f, 1.0f, 1.0f, 1.0);
-		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[SHADOW_FRAMEBUFFER]);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		displaySceneFromLightPOV();
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	frameBufferIndices[0] = frameBuffer[LEFT_TOP_SHADOW_MAP_FRAMEBUFFER];
+	frameBufferIndices[1] = frameBuffer[RIGHT_TOP_SHADOW_MAP_FRAMEBUFFER];
+	frameBufferIndices[2] = frameBuffer[LEFT_BOTTOM_SHADOW_MAP_FRAMEBUFFER];
+	frameBufferIndices[3] = frameBuffer[RIGHT_BOTTOM_SHADOW_MAP_FRAMEBUFFER];
 	
-		glDisable(GL_CULL_FACE);
-		glDisable(GL_POLYGON_OFFSET_FILL);
-	
-		glClearColor(0.63f, 0.82f, 0.96f, 1.0);
-		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HARD_SHADOW_FRAMEBUFFER]);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		displaySceneFromGBuffer(shaderProg[GBUFFER_HARD_SHADOW_SHADER]);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		
-		pointLightSample++;
+	shadowParams.shadowMaps[0] = textures[LEFT_TOP_SHADOW_MAP_DEPTH];
+	shadowParams.shadowMaps[1] = textures[RIGHT_TOP_SHADOW_MAP_DEPTH];
+	shadowParams.shadowMaps[2] = textures[LEFT_BOTTOM_SHADOW_MAP_DEPTH];
+	shadowParams.shadowMaps[3] = textures[RIGHT_BOTTOM_SHADOW_MAP_DEPTH];
+	qSum = 0;
+	qSum2 = 0;
+	qSum3 = 0;
 
-		myGLTextureViewer.setShaderProg(shaderProg[COPY_IMAGE_SHADER]);
-		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[SOFT_SHADOW_FRAMEBUFFER]);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		glViewport(0, 0, windowWidth, windowHeight);
-		myGLTextureViewer.drawTextureOnShader(textures[HARD_SHADOW_MAP_COLOR], windowWidth, windowHeight);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		
-	}
+	//double begin = cpu_time();
+	shadowParams.quadTreeEvaluation = true;
+	evaluateAreaLightSource(quadTreeLightSource, sampleIndices, frameBufferIndices);
+	shadowParams.quadTreeEvaluation = false;
+	//glFinish();
+	//double end = cpu_time();
+	//std::cout << "Evaluation: " << (end - begin) << std::endl;
+	//std::cout << "	Child Shadow Maps: " << qSum << std::endl;
+	//std::cout << "	Quad-Tree Reprojection: " << qSum2 << std::endl;
+	//std::cout << "	Occlusion Query: " << qSum3 << std::endl;
 	
-	pointLightSample = -1;
-		
-	displaySceneFromCameraPOV(shaderProg[GBUFFER_FINAL_RENDERING_SHADER]);
+	//begin = cpu_time();
+	quadTreeShadowMapSamples = 0;
+	renderAreaLightSource(quadTreeLightSource, quadTreeLightSource->getLevel());
+	//glFinish();
+	//end = cpu_time();
+	//std::cout << "Build Texture Array: " << (end - begin) << std::endl;
+	
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_DEPTH], 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_COLOR], 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	lightSource->setEye(((LightSource*)quadTreeLightSource)->getEye());
+	lightSource->setAt(((LightSource*)quadTreeLightSource)->getAt());
+
+	//begin = cpu_time();
+	glClearColor(0.63f, 0.82f, 0.96f, 1.0);
+	shadowParams.numberOfSamples = quadTreeShadowMapSamples;
+	displaySceneFromCameraPOV(shaderProg[ACCURATE_SOFT_SHADOW_SHADER]);
+	//glFinish();
+	//end = cpu_time();
+	//std::cout << "Render Texture Array: " << end - begin << std::endl;
+	
+	//double end = cpu_time();
+	//std::cout << "Adaptive Sampling: " << end - begin << std::endl;
+	
+	delete quadTreeLightSource;
+	quadTreeLightSource = new QuadTreeLightSource(lightSource);
 	
 }
 
@@ -440,68 +783,17 @@ void renderSoftShadows()
 		
 	}
 
-	if(shadowParams.VSSM) {
-		
-		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HIERARCHICAL_SHADOW_FRAMEBUFFER]);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[HIERARCHICAL_SHADOW_MAP_DEPTH], 0);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[HIERARCHICAL_SHADOW_MAP_COLOR], 0);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		
-		myGLTextureViewer.setShaderProg(shaderProg[PREPARE_MIN_MAX_SHADER]);
-		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HIERARCHICAL_SHADOW_FRAMEBUFFER]);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		glViewport(0, 0, shadowMapWidth, shadowMapHeight);
-		myGLTextureViewer.drawTextureOnShader(textures[SHADOW_MAP_COLOR], shadowMapWidth, shadowMapHeight);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-		int m = std::logf(shadowMapWidth)/std::logf(2);
-		int factor;
-
-		for(int iteration = 1; iteration < m; iteration++) {
-		
-			factor = powf(2.0, iteration);
-		
-			glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_DEPTH], 0);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_COLOR], iteration);
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		
-			myGLTextureViewer.setShaderProg(shaderProg[MIN_MAX_SHADER]);
-			glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			glViewport(0, 0, shadowMapWidth/factor, shadowMapHeight/factor);
-			glUseProgram(shaderProg[MIN_MAX_SHADER]);
-			glUniform1i(glGetUniformLocation(shaderProg[MIN_MAX_SHADER], "iteration"), iteration);
-			myGLTextureViewer.drawTextureOnShader(textures[HIERARCHICAL_SHADOW_MAP_COLOR], shadowMapWidth/factor, shadowMapHeight/factor);
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-			glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HIERARCHICAL_SHADOW_FRAMEBUFFER]);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[HIERARCHICAL_SHADOW_MAP_DEPTH], 0);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[HIERARCHICAL_SHADOW_MAP_COLOR], iteration);
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		
-			myGLTextureViewer.setShaderProg(shaderProg[COPY_IMAGE_SHADER]);
-			glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HIERARCHICAL_SHADOW_FRAMEBUFFER]);
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			glViewport(0, 0, shadowMapWidth/factor, shadowMapHeight/factor);
-			myGLTextureViewer.drawTextureOnShader(textures[TEMP_SHADOW_MAP_COLOR], shadowMapWidth/factor, shadowMapHeight/factor);
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-		}
-		
-		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_DEPTH], 0);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_COLOR], 0);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-	}
+	if(shadowParams.useHierarchicalShadowMap) renderHSM();
 	
 	glDisable(GL_CULL_FACE);
 	glDisable(GL_POLYGON_OFFSET_FILL);
 	
 	glClearColor(0.63f, 0.82f, 0.96f, 1.0);
-	displaySceneFromCameraPOV(shaderProg[SOFT_SHADOW_SHADER]);
-
+	GLuint shader;
+	if(shadowParams.RBSSM) shader = shaderProg[RBSSM_SHADER];
+	else shader = shaderProg[SOFT_SHADOW_SHADER];
+	displaySceneFromCameraPOV(shader);
+	
 }
 
 void renderScreenSpaceSoftShadows()
@@ -509,7 +801,7 @@ void renderScreenSpaceSoftShadows()
 
 	//bug because we use GL_TEXTURE7 here and for the VERTEX_MAP_COLOR
 	myGLTextureViewer.setShaderProg(shaderProg[CLEAR_IMAGE_SHADER]);
-	myGLTextureViewer.drawTextureOnShader(textures[SHADOW_MAP_COLOR], windowWidth, windowHeight);
+	myGLTextureViewer.drawTextureOnShader(textures[SHADOW_MAP_COLOR], shadowMapWidth, shadowMapHeight);
 	
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0);
 	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[GBUFFER_FRAMEBUFFER]);
@@ -522,11 +814,14 @@ void renderScreenSpaceSoftShadows()
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	displaySceneFromLightPOV();
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	if(shadowParams.useHierarchicalShadowMap) renderHSM();
 	
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0);
 	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HARD_SHADOW_FRAMEBUFFER]);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	displaySceneFromGBuffer(shaderProg[GBUFFER_HARD_SHADOW_SHADER]);
+	if(shadowParams.SSRBSSM) displaySceneFromGBuffer(shaderProg[GBUFFER_RSMSS_SHADER]);
+	else displaySceneFromGBuffer(shaderProg[GBUFFER_HARD_SHADOW_SHADER]);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	
 	if(shadowParams.SSPCSS || shadowParams.SSSM) {
@@ -572,7 +867,7 @@ void renderScreenSpaceSoftShadows()
 	glClearColor(0.63f, 0.82f, 0.96f, 1.0);
 	displaySceneFromCameraPOV(shaderProg[GBUFFER_FINAL_RENDERING_SHADER]);
 	shadowParams.useSoftShadowMap = false;
-	
+
 }
 
 void display()
@@ -580,10 +875,12 @@ void display()
 	
 	if(shadowParams.monteCarlo)
 		renderMonteCarlo();
-	else if(shadowParams.PCSS || shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM)
-		renderSoftShadows();
-	else
+	else if(shadowParams.adaptiveSampling)
+		renderAdaptiveLightSourceSampling();
+	else if(shadowParams.SSPCSS || shadowParams.SSABSS || shadowParams.SSSM || shadowParams.SSRBSSM)
 		renderScreenSpaceSoftShadows();
+	else 
+		renderSoftShadows();
 
 	glutSwapBuffers();
 	glutPostRedisplay();
@@ -613,6 +910,15 @@ void keyboard(unsigned char key, int x, int y)
 		break;
 	case 's':
 		shadowParams.SAT = !shadowParams.SAT;
+		break;
+	case 'k':
+		std::cout << shadowParams.kernelSize << std::endl;
+		break;
+	case 'b':
+		std::cout << shadowParams.blockerSearchSize << std::endl;
+		break;
+	case 'q':
+		std::cout << quadTreeShadowMapSamples << std::endl;
 		break;
 	}
 
@@ -646,9 +952,9 @@ void specialKeyboard(int key, int x, int y)
 		if(shadowIntensityOn)
 			shadowParams.shadowIntensity += 0.05;
 		if(changeKernelSizeOn)
-			shadowParams.kernelSize++;
+			shadowParams.kernelSize += 2;
 		if(changeBlockerSearchSizeOn)
-			shadowParams.blockerSearchSize++;
+			shadowParams.blockerSearchSize += 2;
 		break;
 	case GLUT_KEY_DOWN:
 		if(cameraOn) {
@@ -673,9 +979,9 @@ void specialKeyboard(int key, int x, int y)
 		if(shadowIntensityOn)
 			shadowParams.shadowIntensity -= 0.05;
 		if(changeKernelSizeOn)
-			shadowParams.kernelSize--;
+			shadowParams.kernelSize -= 2;
 		if(changeBlockerSearchSizeOn)
-			shadowParams.blockerSearchSize--;
+			shadowParams.blockerSearchSize -= 2;
 		break;
 	case GLUT_KEY_LEFT:
 		if(cameraOn) {
@@ -764,17 +1070,23 @@ void specialKeyboard(int key, int x, int y)
 void resetShadowParameters() {
 	
 	shadowParams.monteCarlo = false;
+	shadowParams.adaptiveSampling = false;
+	shadowParams.adaptiveSamplingLowerAccuracy = false;
+	shadowParams.quadTreeEvaluation = false;
 	shadowParams.PCSS = false;
 	shadowParams.SAVSM = false;
 	shadowParams.VSSM = false;
 	shadowParams.ESSM = false;
 	shadowParams.MSSM = false;
+	shadowParams.RBSSM = false;
 	shadowParams.SSPCSS = false;
 	shadowParams.SSABSS = false;
 	shadowParams.SSSM = false;
+	shadowParams.SSRBSSM = false;
 	shadowParams.useHardShadowMap = false;
 	shadowParams.useSoftShadowMap = false;
 	shadowParams.usePartialAverageBlockerDepthMap = false;
+	shadowParams.useHierarchicalShadowMap = false;
 
 }
 
@@ -820,8 +1132,8 @@ void otherFunctionsMenu(int id) {
 			shadowIntensityOn = !shadowIntensityOn;
 			break;
 		case 2:
-			printf("LightPosition: %f %f %f\n", lightSource->getEye(pointLightSample)[0], lightSource->getEye(pointLightSample)[1], lightSource->getEye(pointLightSample)[2]);
-			printf("LightAt: %f %f %f\n", lightSource->getAt(pointLightSample)[0], lightSource->getAt(pointLightSample)[1], lightSource->getAt(pointLightSample)[2]);
+			printf("LightPosition: %f %f %f\n", lightSource->getEye()[0], lightSource->getEye()[1], lightSource->getEye()[2]);
+			printf("LightAt: %f %f %f\n", lightSource->getAt()[0], lightSource->getAt()[1], lightSource->getAt()[2]);
 			printf("CameraPosition: %f %f %f\n", cameraEye[0], cameraEye[1], cameraEye[2]);
 			printf("CameraAt: %f %f %f\n", cameraAt[0], cameraAt[1], cameraAt[2]);
 			printf("Global Translation: %f %f %f\n", translationVector[0], translationVector[1], translationVector[2]);
@@ -831,33 +1143,58 @@ void otherFunctionsMenu(int id) {
 
 }
 
-void softShadowMenu(int id) {
-
+void accurateSoftShadowMenu(int id) {
+	
 	switch(id) {
 	case 0:
 		resetShadowParameters();
 		shadowParams.monteCarlo = true;
+		shadowParams.numberOfSamples = uniformSampledLightSource->getNumberOfPointLights();
+		for(int s = 0; s < 289; s++) shadowParams.accFactor[s] = 1.0;
 		break;
 	case 1:
+		resetShadowParameters();
+		shadowParams.adaptiveSampling = true;
+		shadowParams.adaptiveSamplingLowerAccuracy = false;
+		break;
+	case 2:
+		resetShadowParameters();
+		shadowParams.adaptiveSampling = true;
+		shadowParams.adaptiveSamplingLowerAccuracy = true;
+		break;
+	}
+
+}
+	
+void plausibleSoftShadowMenu(int id) {
+
+	switch(id) {
+	case 0:
 		resetShadowParameters();
 		shadowParams.PCSS = true;
 		shadowParams.SAT = false;
 		break;
-	case 2:
+	case 1:
 		resetShadowParameters();
 		shadowParams.SAVSM = true;
 		break;
-	case 3:
+	case 2:
 		resetShadowParameters();
 		shadowParams.VSSM = true;
+		shadowParams.useHierarchicalShadowMap = true;
 		break;
-	case 4:
+	case 3:
 		resetShadowParameters();
 		shadowParams.ESSM = true;
 		break;
-	case 5:
+	case 4:
 		resetShadowParameters();
 		shadowParams.MSSM = true;
+		break;
+	case 5:
+		resetShadowParameters();
+		shadowParams.RBSSM = true;
+		shadowParams.useHierarchicalShadowMap = true;
 		break;
 	}
 }
@@ -877,6 +1214,11 @@ void screenSpaceSoftShadowMenu(int id) {
 		resetShadowParameters();
 		shadowParams.SSSM = true;
 		break;
+	case 3:
+		resetShadowParameters();
+		shadowParams.SSRBSSM = true;
+		shadowParams.useHierarchicalShadowMap = true;
+		break;
 	}
 }
 
@@ -890,7 +1232,7 @@ void softShadowParametersMenu(int id) {
 		changeBlockerSearchSizeOn = !changeBlockerSearchSizeOn;
 		break;
 	}
-
+		
 }
 
 void mainMenu(int id) {
@@ -901,20 +1243,27 @@ void mainMenu(int id) {
 
 void createMenu() {
 
-	GLint softShadowMenuID, screenSpaceSoftShadowMenuID, transformationMenuID, softShadowParametersMenuID, otherFunctionsMenuID;
+	GLint accurateSoftShadowMenuID, plausibleSoftShadowMenuID, screenSpaceSoftShadowMenuID;
+	GLint transformationMenuID, softShadowParametersMenuID, otherFunctionsMenuID;
 
-	softShadowMenuID = glutCreateMenu(softShadowMenu);
+	accurateSoftShadowMenuID = glutCreateMenu(accurateSoftShadowMenu);
 		glutAddMenuEntry("Monte-Carlo Sampling", 0);
-		glutAddMenuEntry("Percentage-Closer Soft Shadow Mapping", 1);
-		glutAddMenuEntry("Summed-Area Variance Shadow Mapping", 2);
-		glutAddMenuEntry("Variance Soft Shadow Mapping", 3);
-		glutAddMenuEntry("Exponential Soft Shadow Mapping", 4);
-		glutAddMenuEntry("Moment Soft Shadow Mapping", 5);
+		glutAddMenuEntry("Adaptive Light Source Sampling", 1);
+		glutAddMenuEntry("Adaptive Light Source Sampling (Lower Accuracy)", 2);
 
+	plausibleSoftShadowMenuID = glutCreateMenu(plausibleSoftShadowMenu);
+		glutAddMenuEntry("Percentage-Closer Soft Shadow Mapping", 0);
+		glutAddMenuEntry("Summed-Area Variance Shadow Mapping", 1);
+		glutAddMenuEntry("Variance Soft Shadow Mapping", 2);
+		glutAddMenuEntry("Exponential Soft Shadow Mapping", 3);
+		glutAddMenuEntry("Moment Soft Shadow Mapping", 4);
+		glutAddMenuEntry("Revectorization-based Soft Shadow Mapping", 5);	
+	
 	screenSpaceSoftShadowMenuID = glutCreateMenu(screenSpaceSoftShadowMenu);
 		glutAddMenuEntry("Screen-Space Percentage-Closer Soft Shadow Mapping", 0);
 		glutAddMenuEntry("Screen-Space Anisotropic Blurred Soft Shadow Mapping", 1);
 		glutAddMenuEntry("Separable Soft Shadow Mapping", 2);
+		glutAddMenuEntry("Screen-Space Revectorization-based Soft Shadow Mapping", 3);
 
 	transformationMenuID = glutCreateMenu(transformationMenu);
 		glutAddMenuEntry("Translation", 0);
@@ -932,7 +1281,8 @@ void createMenu() {
 		glutAddMenuEntry("Print Data", 2);
 		
 	glutCreateMenu(mainMenu);
-		glutAddSubMenu("Soft Shadow Mapping", softShadowMenuID);
+		glutAddSubMenu("Accurate Soft Shadow Mapping", accurateSoftShadowMenuID);
+		glutAddSubMenu("Plausible Soft Shadow Mapping", plausibleSoftShadowMenuID);
 		glutAddSubMenu("Screen-Space Soft Shadow Mapping", screenSpaceSoftShadowMenuID);
 		glutAddSubMenu("Soft Shadow Parameters", softShadowParametersMenuID);
 		glutAddSubMenu("Transformation", transformationMenuID);
@@ -947,56 +1297,69 @@ void initGL(char *configurationFile) {
 	glShadeModel(GL_SMOOTH);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);  
 
+	if(textureArray[0] == 0)
+		glGenTextures(1, textureArray);
 	if(textures[0] == 0)
-		glGenTextures(20, textures);
+		glGenTextures(30, textures);
 	if(frameBuffer[0] == 0)
-		glGenFramebuffers(10, frameBuffer);
+		glGenFramebuffers(20, frameBuffer);
 	if(sceneVBO[0] == 0)
 		glGenBuffers(5, sceneVBO);
 	if(sceneTextures[0] == 0)
 		glGenTextures(4, sceneTextures);
+	if(queryObject[0] == 0)
+		glGenQueries(1, queryObject);
 
 	scene = new Mesh();
 	sceneLoader = new SceneLoader(configurationFile, scene);
 	sceneLoader->load();
-
+	 
 	float centroid[3];
 	lightSource = new LightSource();
+	
 	scene->computeCentroid(centroid);
 	cameraEye[0] = sceneLoader->getCameraPosition()[0]; cameraEye[1] = sceneLoader->getCameraPosition()[1]; cameraEye[2] = sceneLoader->getCameraPosition()[2];
 	cameraAt[0] = sceneLoader->getCameraAt()[0]; cameraAt[1] = sceneLoader->getCameraAt()[1]; cameraAt[2] = sceneLoader->getCameraAt()[2];
 	cameraUp[0] = 0.0; cameraUp[1] = 0.0; cameraUp[2] = 1.0;
 	lightSource->setAt(glm::vec3(sceneLoader->getLightAt()[0], sceneLoader->getLightAt()[1], sceneLoader->getLightAt()[2]));
 	lightSource->setUp(glm::vec3(0.0, 0.0, 1.0));
-	lightSource->setSize(32.0);
-	lightSource->setNumberOfPointLights(64.0);
+	lightSource->setSize(16.0);
+	
+	uniformSampledLightSource = new UniformSampledLightSource(lightSource, 289.0);
+	quadTreeLightSource = new QuadTreeLightSource(lightSource);
 
 	resetShadowParameters();
-	shadowParams.SSSM = true;
+	shadowParams.PCSS = true;
+	shadowParams.useHierarchicalShadowMap = false;
 	shadowParams.SAT = false;
 	shadowParams.shadowMapWidth = shadowMapWidth;
 	shadowParams.shadowMapHeight = shadowMapHeight;
 	shadowParams.windowWidth = windowWidth;
 	shadowParams.windowHeight = windowHeight;
 	shadowParams.shadowIntensity = 0.25;
-	shadowParams.accFactor = 1.0/lightSource->getNumberOfPointLights();
 	shadowParams.blockerSearchSize = 7;
-	shadowParams.kernelSize = 15;
+	shadowParams.kernelSize = 7;
 	shadowParams.lightSourceRadius = lightSource->getSize()/2;
 	shadowParams.blockerThreshold = 0.0075;
 	shadowParams.filterThreshold = 1.0;
+	shadowParams.maxSearch = 16;
+	shadowParams.depthThreshold = sceneLoader->getDepthThreshold();
+	shadowParams.HSMAlpha = sceneLoader->getHSMAlpha();
+	shadowParams.HSMBeta = sceneLoader->getHSMBeta();
 
 	bilateralFilter = new Filter();
 	bilateralFilter->buildBilateralKernel(shadowParams.kernelSize);
 	bilateralFilter->setSigmaColor(10.0);
 	bilateralFilter->setSigmaSpace(0.01);
-	
+
 	myGLTextureViewer.loadQuad();
 	createMenu();
 
 	if(scene->textureFromImage())
 		for(int num = 0; num < scene->getNumberOfTextures(); num++)
 			myGLTextureViewer.loadRGBTexture(scene->getTexture()[num]->getData(), sceneTextures, num, scene->getTexture()[num]->getWidth(), scene->getTexture()[num]->getHeight());
+
+	myGLTextureViewer.createDepthComponentTextureArray(textureArray, 0, shadowMapWidth, shadowMapHeight, 289);
 
 	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, SHADOW_MAP_COLOR, shadowMapWidth, shadowMapHeight);
 	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, TEMP_SHADOW_MAP_COLOR, shadowMapWidth, shadowMapHeight);
@@ -1007,7 +1370,12 @@ void initGL(char *configurationFile) {
 	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, VERTEX_MAP_COLOR, windowWidth, windowHeight, GL_NEAREST);
 	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, NORMAL_MAP_COLOR, windowWidth, windowHeight, GL_NEAREST);
 	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, PARTIAL_BLOCKER_SEARCH_MAP_COLOR, windowWidth, windowHeight, GL_NEAREST);
-	
+	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, LEFT_TOP_SHADOW_MAP_COLOR, shadowMapWidth, shadowMapHeight);
+	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, RIGHT_TOP_SHADOW_MAP_COLOR, shadowMapWidth, shadowMapHeight);
+	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, LEFT_BOTTOM_SHADOW_MAP_COLOR, shadowMapWidth, shadowMapHeight);
+	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, RIGHT_BOTTOM_SHADOW_MAP_COLOR, shadowMapWidth, shadowMapHeight);
+	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, QUAD_TREE_REPROJECTION_COLOR, windowWidth, windowHeight, GL_NEAREST);
+
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, SHADOW_MAP_DEPTH, shadowMapWidth, shadowMapHeight);
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, TEMP_SHADOW_MAP_DEPTH, shadowMapWidth, shadowMapHeight);
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, SAT_SHADOW_MAP_DEPTH, shadowMapWidth, shadowMapHeight);
@@ -1016,7 +1384,12 @@ void initGL(char *configurationFile) {
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, HARD_SHADOW_MAP_DEPTH, windowWidth, windowHeight);
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, GBUFFER_MAP_DEPTH, windowWidth, windowHeight);
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, PARTIAL_BLOCKER_SEARCH_MAP_DEPTH, windowWidth, windowHeight);
-	
+	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, LEFT_TOP_SHADOW_MAP_DEPTH, shadowMapWidth, shadowMapHeight);
+	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, RIGHT_TOP_SHADOW_MAP_DEPTH, shadowMapWidth, shadowMapHeight);
+	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, LEFT_BOTTOM_SHADOW_MAP_DEPTH, shadowMapWidth, shadowMapHeight);
+	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, RIGHT_BOTTOM_SHADOW_MAP_DEPTH, shadowMapWidth, shadowMapHeight);
+	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, QUAD_TREE_REPROJECTION_DEPTH, windowWidth, windowHeight);
+
 	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[SHADOW_FRAMEBUFFER]);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[SHADOW_MAP_DEPTH], 0);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[SHADOW_MAP_COLOR], 0);
@@ -1057,6 +1430,31 @@ void initGL(char *configurationFile) {
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[PARTIAL_BLOCKER_SEARCH_MAP_COLOR], 0);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[LEFT_TOP_SHADOW_MAP_FRAMEBUFFER]);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[LEFT_TOP_SHADOW_MAP_DEPTH], 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[LEFT_TOP_SHADOW_MAP_COLOR], 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[RIGHT_TOP_SHADOW_MAP_FRAMEBUFFER]);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[RIGHT_TOP_SHADOW_MAP_DEPTH], 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[RIGHT_TOP_SHADOW_MAP_COLOR], 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[LEFT_BOTTOM_SHADOW_MAP_FRAMEBUFFER]);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[LEFT_BOTTOM_SHADOW_MAP_DEPTH], 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[LEFT_BOTTOM_SHADOW_MAP_COLOR], 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[RIGHT_BOTTOM_SHADOW_MAP_FRAMEBUFFER]);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[RIGHT_BOTTOM_SHADOW_MAP_DEPTH], 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[RIGHT_BOTTOM_SHADOW_MAP_COLOR], 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[QUAD_TREE_REPROJECTION_FRAMEBUFFER]);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[QUAD_TREE_REPROJECTION_DEPTH], 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[QUAD_TREE_REPROJECTION_COLOR], 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
 }
 
 int main(int argc, char **argv) {
@@ -1081,6 +1479,7 @@ int main(int argc, char **argv) {
 	initShader("Shaders/GBuffer/HardShadow", GBUFFER_HARD_SHADOW_SHADER);
 	initShader("Shaders/GBuffer/FinalRendering", GBUFFER_FINAL_RENDERING_SHADER);
 	initShader("Shaders/GBuffer/GBuffer", GBUFFER_SHADER);
+	initShader("Shaders/GBuffer/RSMSS", GBUFFER_RSMSS_SHADER);
 	initShader("Shaders/SoftShadow", SOFT_SHADOW_SHADER);
 	initShader("Shaders/Exponential", EXPONENTIAL_SHADER);
 	initShader("Shaders/Moments/Moments", MOMENT_SHADER);
@@ -1091,6 +1490,10 @@ int main(int argc, char **argv) {
 	initShader("Shaders/ScreenSpace/PartialAverageBlockerDepth", PARTIAL_BLOCKER_SEARCH_SHADER);
 	initShader("Shaders/ScreenSpace/PartialShadowFiltering", PARTIAL_SHADOW_FILTERING_SHADER);
 	initShader("Shaders/ScreenSpace/ScreenSpaceSoftShadow", SCREEN_SPACE_SOFT_SHADOW_SHADER);
+	initShader("Shaders/Revectorization/RBSSM", RBSSM_SHADER);
+	initShader("Shaders/QuadTree/Reprojection", QUAD_TREE_REPROJECTION_SHADER);
+	initShader("Shaders/QuadTree/Evaluation", QUAD_TREE_EVALUATION_SHADER);
+	initShader("Shaders/AccurateSoftShadow", ACCURATE_SOFT_SHADOW_SHADER);
 	glUseProgram(0); 
 
 	glutMainLoop();
@@ -1098,6 +1501,8 @@ int main(int argc, char **argv) {
 	delete scene;
 	delete sceneLoader;
 	delete lightSource;
+	delete uniformSampledLightSource;
+	delete quadTreeLightSource;
 	delete bilateralFilter;
 	return 0;
 

@@ -1,6 +1,7 @@
-uniform sampler2D normalMap;
 uniform sampler2D vertexMap;
+uniform sampler2D normalMap;
 uniform sampler2D hardShadowMap;
+uniform mat4 lightMVP;
 uniform mat4 MV;
 uniform mat3 normalMatrix;
 uniform float shadowIntensity;
@@ -15,6 +16,7 @@ uniform int windowHeight;
 uniform int SSPCSS;
 uniform int SSABSS;
 uniform int SSSM;
+uniform int SSRBSSM;
 varying vec2 f_texcoord;
 
 float bilateralShadowFiltering() {
@@ -45,7 +47,7 @@ float bilateralShadowFiltering() {
 
 			space = h * h;
 			color = (value - shadow) * (value - shadow);
-			if(SSABSS == 1) sigma = normalize(normalMatrix * texture2D(normalMap, f_texcoord.xy).xyz).z * 1000.0;
+			if(SSABSS == 1 || SSRBSSM == 1) sigma = normalize(normalMatrix * texture2D(normalMap, f_texcoord.xy).xyz).z * 1000.0;
 			weight = exp(-(space * invSigmaSpace + color * invSigmaColor)/sigma);
 			illuminationCount += weight * shadow;
 			count += weight;
@@ -110,10 +112,11 @@ void main()
 	
 	if(shadow.r > 0.0) {
 		
-		if(SSPCSS == 1 || SSABSS == 1)
+		if(SSPCSS == 1 || SSABSS == 1 || SSRBSSM == 1)
 			shadow.r = bilateralShadowFiltering();
 		else if(SSSM == 1)
 			shadow.r = gaussianShadowFiltering();
+
 		gl_FragColor = vec4(shadow.r, shadow.r, shadow.r, 1.0);
 
 	} else {

@@ -82,7 +82,7 @@ vec2 computeAverageBlockerDepthBasedOnSSSM() {
 void main()
 {	
 
-	vec2 shadow = texture2D(hardShadowMap, f_texcoord.xy).rg;	
+	vec3 shadow = texture2D(hardShadowMap, f_texcoord.xy).rgb;	
 	
 	if(shadow.r > 0.0) {
 

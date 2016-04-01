@@ -30,6 +30,8 @@ It was implemented based on the following papers:
 
 	- Screen Space Anisotropic Blurred Soft Shadows proposed in "Screen Space Anisotropic Blurred Soft Shadows" by Z. Zheng and S. Saito in 2011;
 
+	- Adaptive Light Source Sampling proposed in "Fast Accurate Soft Shadows with Adaptive Light Source Sampling" by M. Schwarzler et al. in 2012;
+
 	- Exponential Soft Shadow Mapping proposed in "Exponential Soft Shadow Mapping" by L. Shen et al. in 2013;
 	
 	- Separable Soft Shadow Mapping proposed in "Separable Soft Shadow Mapping" by J. Buades et al. in 2015;

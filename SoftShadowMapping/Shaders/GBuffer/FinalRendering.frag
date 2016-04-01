@@ -10,11 +10,11 @@ varying vec3 uvTexture;
 varying vec3 meshColor;
 uniform vec3 lightPosition;
 uniform float shadowIntensity;
-uniform float accFactor;
 uniform int windowWidth;
 uniform int windowHeight;
 uniform int useTextureForColoring;
 uniform int useMeshColor;
+uniform int adaptiveSampling;
 
 vec4 phong(float shadow)
 {
