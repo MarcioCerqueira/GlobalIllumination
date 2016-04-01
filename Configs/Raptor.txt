@@ -1,0 +1,19 @@
+o OBJ/Raptor/Raptor.obj
+s 0.25 0.25 0.25
+t 0.0 -7.0 0.0
+cf OBJ/Raptor/Raptor.obj
++
+o OBJ/Raptor/plane.obj
+m OBJ/Raptor/white.png
+s 60.0 1.0 40.0
+t 0.0 -8.0 0.0
++
+/ve 0.0 41.0 -50.0
+/va 0.0 16.0 -10.0
+ve 5.0 25.0 -39.0
+va 5.0 0.0 1.0
+le 10.0 140.0 100.0
+la 0.0 0.0 0.0
+d 0.0000025
+ha 0
+hb 0.001

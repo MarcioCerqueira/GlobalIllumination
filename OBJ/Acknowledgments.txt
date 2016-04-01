@@ -5,7 +5,7 @@ McGuire Graphics Data - http://graphics.cs.williams.edu/data/meshes.xml
 Model: Teapot and Sponza
 
 TF3DM - http://tf3dm.com/
-Model: TreeWithLeaves and TreeWithoutLeaves
+Model: TreeWithLeaves, TreeWithoutLeaves, Raptor, QuadBot, and Door
 
 Archive3D - archive3d.net
 Model: Fence

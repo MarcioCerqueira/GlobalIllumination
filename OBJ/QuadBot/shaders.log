@@ -1,0 +1,19 @@
+VERTEX SHADER COMPILE INFO:
+
+No errors.
+
+
+FRAGMENT SHADER COMPILE INFO:
+
+ERROR: 0:52: 'assign' :  l-value required "Cs" (can't modify a varying)
+ERROR: 0:53: '&&' :  wrong operand types  no operation '&&' exists that takes a left-hand operand of type 'uniform int' and a right operand of type 'bool' (or there is no acceptable conversion)
+ERROR: 0:47: '' : boolean expression expected 
+ERROR: 0:62: 'assign' :  l-value required "Cs" (can't modify a varying)
+ERROR: 0:63: '&&' :  wrong operand types  no operation '&&' exists that takes a left-hand operand of type 'uniform int' and a right operand of type 'bool' (or there is no acceptable conversion)
+ERROR: 0:57: '' : boolean expression expected 
+ERROR: 0:72: 'assign' :  l-value required "Cs" (can't modify a varying)
+ERROR: 0:73: '&&' :  wrong operand types  no operation '&&' exists that takes a left-hand operand of type 'uniform int' and a right operand of type 'bool' (or there is no acceptable conversion)
+ERROR: 0:67: '' : boolean expression expected 
+
+
+
