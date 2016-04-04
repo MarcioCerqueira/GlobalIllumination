@@ -144,15 +144,15 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	
 	if(shadowParams.adaptiveSampling && shadowParams.quadTreeEvaluation) {
 
-		GLuint lightMVPsID[4];
-		char lightMVPString[10];
+		GLuint indexID = glGetUniformLocation(shaderProg, "shadowMapIndices");
+		glUniform1iv(indexID, 4, shadowParams.localQuadTreeHash);
+		GLuint lightMVPsID = glGetUniformLocation(shaderProg, "lightMVPs");
 		for(int index = 0; index < 4; index++) {
-			shadowParams.lightMVPs[index] = bias * shadowParams.lightMVPs[index];
-			sprintf(lightMVPString, "lightMVP%d", index);
-			lightMVPsID[index] = glGetUniformLocation(shaderProg, lightMVPString);
-			glUniformMatrix4fv(lightMVPsID[index], 1, GL_FALSE, &(shadowParams.lightMVPs[index])[0][0]);
+			int hashIndex = shadowParams.localQuadTreeHash[index];
+			shadowParams.quadTreeLightMVPs[index] = bias * shadowParams.lightMVPs[hashIndex];
 		}
-	
+		glUniformMatrix4fv(lightMVPsID, 4, GL_FALSE, &(shadowParams.quadTreeLightMVPs[0])[0][0]);
+		
 	} else if(shadowParams.monteCarlo || (shadowParams.adaptiveSampling && !shadowParams.quadTreeEvaluation)) {
 	
 		GLuint lightMVPTransID = glGetUniformLocation(shaderProg, "lightMVPTrans");
@@ -162,7 +162,6 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 			shadowParams.lightTrans[index] = glm::vec4(shadowParams.lightMVPs[index][3][0], shadowParams.lightMVPs[index][3][1], shadowParams.lightMVPs[index][3][2], 
 				shadowParams.lightMVPs[index][3][3]);
 			if(shadowParams.adaptiveSampling) shadowParams.lightTrans[index][3] += shadowParams.accFactor[index] * 10000;
-			
 		}
 		glUniform4fv(lightMVPTransID, shadowParams.numberOfSamples, &(shadowParams.lightTrans[0])[0]);
 
@@ -237,13 +236,8 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		
 		if(shadowParams.quadTreeEvaluation) {
 		
-			GLuint shadowMapID[4];
-			char shadowMapString[20];
-			for(int index = 0; index < 4; index++) {
-				sprintf(shadowMapString, "shadowMap%d", index);
-				shadowMapID[index] = glGetUniformLocation(shaderProg, shadowMapString);
-				glUniform1i(shadowMapID[index], 10 + index);
-			}
+			GLuint shadowMapArray = glGetUniformLocation(shaderProg, "shadowMapArray");
+			glUniform1i(shadowMapArray, 10);
 
 		} else if(shadowParams.useSoftShadowMap) {
 		
@@ -290,12 +284,10 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		glBindTexture(GL_TEXTURE_2D, shadowParams.normalMap);
 		
 		if(shadowParams.quadTreeEvaluation) {
-
-			for(int index = 0; index < 4; index++) {
-				glActiveTexture(GL_TEXTURE10 + index);
-				glBindTexture(GL_TEXTURE_2D, shadowParams.shadowMaps[index]);
-			}
 			
+			glActiveTexture(GL_TEXTURE10);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, shadowParams.shadowMapArray);
+
 		} else if(shadowParams.useSoftShadowMap) {
 
 			glActiveTexture(GL_TEXTURE1);
@@ -341,14 +333,8 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		if(shadowParams.quadTreeEvaluation) {
 
 			glActiveTexture(GL_TEXTURE10);
-			glDisable(GL_TEXTURE_2D);
-			glActiveTexture(GL_TEXTURE11);
-			glDisable(GL_TEXTURE_2D);
-			glActiveTexture(GL_TEXTURE12);
-			glDisable(GL_TEXTURE_2D);
-			glActiveTexture(GL_TEXTURE13);
-			glDisable(GL_TEXTURE_2D);
-		
+			glDisable(GL_TEXTURE_2D_ARRAY);
+
 		} else if((screenSpace && (shadowParams.useHardShadowMap || shadowParams.usePartialAverageBlockerDepthMap))) {
 		
 			glActiveTexture(GL_TEXTURE1);

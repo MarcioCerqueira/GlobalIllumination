@@ -173,8 +173,10 @@ int vel = 1;
 float animation = -1800;
 
 bool quadTreeShadowMapIndices[17][17];
+int quadTreeHash[17][17];
 int maxLevel = 4;
 int quadTreeShadowMapSamples = 0;
+int frameBufferIndices[4];
 
 double cpu_time(void)
 {
@@ -397,23 +399,47 @@ double qBegin, qEnd, qSum;
 double qBegin2, qEnd2, qSum2;
 double qBegin3, qEnd3, qSum3;
 
-bool evaluateSubAreaLightSource(QuadTreeLightSource *quadTree, int *sampleIndices, int *frameBufferIndices)
+bool evaluateSubAreaLightSource(QuadTreeLightSource *quadTree, int nodeIndex)
 {
 
 	qBegin = cpu_time();
+	
+	int level = quadTree->getLevel();
+	int childFactor = 16/powf(2, level);
+	int parentFactor = powf(2, level);
+
 	for(int index = 0; index < 4; index++) {
 
-		lightSource->setEye(quadTree->getEye(sampleIndices[index]));
-		lightSource->setAt(quadTree->getAt(sampleIndices[index]));
+		int x = (index % 2) * childFactor + (nodeIndex % parentFactor) * childFactor;
+		int y = (index / 2) * childFactor + (nodeIndex / parentFactor) * childFactor;
+	
+		if(quadTreeShadowMapIndices[x][y]) {
+			shadowParams.localQuadTreeHash[index] = quadTreeHash[x][y];
+			continue;
+		} else {
+			quadTreeShadowMapIndices[x][y] = true;
+		}
+
+		lightSource->setEye(quadTree->getEye(index));
+		lightSource->setAt(quadTree->getAt(index));
+		
+		quadTreeHash[x][y] = quadTreeShadowMapSamples;
+		shadowParams.localQuadTreeHash[index] = quadTreeShadowMapSamples;
+		
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
+		glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, textureArray[0], 0, quadTreeShadowMapSamples);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[TEMP_SHADOW_MAP_COLOR], 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		
 		glClearColor(1.0f, 1.0f, 1.0f, 1.0);
-		glBindFramebuffer(GL_FRAMEBUFFER, frameBufferIndices[index]);
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[TEMP_SHADOW_FRAMEBUFFER]);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		displaySceneFromLightPOV();
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-		shadowParams.lightMVPs[index] = lightMVP;
-	
+		shadowParams.lightMVPs[quadTreeShadowMapSamples] = lightMVP;
+		quadTreeShadowMapSamples++;
+
 	}
 	glFinish();
 	qEnd = cpu_time();
@@ -434,10 +460,10 @@ bool evaluateSubAreaLightSource(QuadTreeLightSource *quadTree, int *sampleIndice
 	glFinish();
 	qEnd2 = cpu_time();
 	qSum2 += qEnd2 - qBegin2;
-
+	
 	int div = 1;
 	if(shadowParams.adaptiveSamplingLowerAccuracy) div = 4;
-
+	
 	qBegin3 = cpu_time();
 	glBeginQuery(GL_ANY_SAMPLES_PASSED, queryObject[0]);
 	myGLTextureViewer.setShaderProg(shaderProg[QUAD_TREE_EVALUATION_SHADER]);
@@ -448,29 +474,41 @@ bool evaluateSubAreaLightSource(QuadTreeLightSource *quadTree, int *sampleIndice
 	
 	GLuint output;
 	glGetQueryObjectuiv(queryObject[0], GL_QUERY_RESULT, &output);
-	
+
 	glFinish();
 	qEnd3 = cpu_time();
 	qSum3 += qEnd3 - qBegin3;
 	return (bool)output;
-
+	
 }
 
-void evaluateAreaLightSource(QuadTreeLightSource *quadTree, int *sampleIndices, int *frameBufferIndices) 
+void evaluateAreaLightSource(QuadTreeLightSource *quadTree, int nodeIndex) 
 {
 	
 	if(quadTree->getLevel() == maxLevel) return;
 
 	QuadTreeLightSource *tempNode = NULL;
-	bool isSubdivisionRequired = evaluateSubAreaLightSource(quadTree, sampleIndices, frameBufferIndices);
+	bool isSubdivisionRequired = evaluateSubAreaLightSource(quadTree, nodeIndex);
 	
 	if(isSubdivisionRequired) {
 
 		quadTree->subdivide();
 		
+		int childIndex[4] = {0};
+		int level = quadTree->getLevel();
+
+		int div = powf(2, level);
+		int	x = nodeIndex % div;
+		int	y = nodeIndex / div;
+		int baseIndex = 2 * x + powf(2, level + 2) * y;
+		childIndex[0] = baseIndex;
+		childIndex[1] = baseIndex + 1;
+		childIndex[2] = baseIndex + powf(2, level + 1);
+		childIndex[3] = baseIndex + powf(2, level + 1) + 1;
+		
 		for(int childNode = 0; childNode < 4; childNode++) {
 			tempNode = quadTree->getChildNode(childNode);
-			evaluateAreaLightSource(tempNode, sampleIndices, frameBufferIndices);
+			evaluateAreaLightSource(tempNode, childIndex[childNode]);
 		}
 
 	}
@@ -489,9 +527,14 @@ void renderSubAreaLightSource(QuadTreeLightSource *quadTree, int nodeIndex)
 		int x = (sample % 2) * childFactor + (nodeIndex % parentFactor) * childFactor;
 		int y = (sample / 2) * childFactor + (nodeIndex / parentFactor) * childFactor;
 		
-		if(quadTreeShadowMapIndices[x][y]) continue;
-		else quadTreeShadowMapIndices[x][y] = true;
-		
+		if(quadTreeShadowMapIndices[x][y]) {
+			int index = quadTreeHash[x][y];
+			shadowParams.accFactor[index] = level;
+			continue;
+		} else {
+			quadTreeShadowMapIndices[x][y] = true;
+		}
+
 		lightSource->setEye(quadTree->getEye(sample));
 		lightSource->setAt(quadTree->getAt(sample));
 		
@@ -661,7 +704,7 @@ void renderMonteCarlo()
 void renderAdaptiveLightSourceSampling()
 {
 
-	//double begin = cpu_time();
+	double begin = cpu_time();
 	myGLTextureViewer.setShaderProg(shaderProg[CLEAR_IMAGE_SHADER]);
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0);
 	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[SOFT_SHADOW_FRAMEBUFFER]);
@@ -682,26 +725,16 @@ void renderAdaptiveLightSourceSampling()
 	displaySceneFromCameraPOV(shaderProg[GBUFFER_SHADER]);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	
-	int sampleIndices[4] = {0, 1, 2, 3};
-	int frameBufferIndices[4] = {};
-	for(int x = 0; x < 17; x++) for(int y = 0; y < 17; y++) quadTreeShadowMapIndices[x][y] = false;
+	for(int x = 0; x < 17; x++) for(int y = 0; y < 17; y++) { quadTreeShadowMapIndices[x][y] = false; quadTreeHash[x][y] = -1; }
 
-	frameBufferIndices[0] = frameBuffer[LEFT_TOP_SHADOW_MAP_FRAMEBUFFER];
-	frameBufferIndices[1] = frameBuffer[RIGHT_TOP_SHADOW_MAP_FRAMEBUFFER];
-	frameBufferIndices[2] = frameBuffer[LEFT_BOTTOM_SHADOW_MAP_FRAMEBUFFER];
-	frameBufferIndices[3] = frameBuffer[RIGHT_BOTTOM_SHADOW_MAP_FRAMEBUFFER];
-	
-	shadowParams.shadowMaps[0] = textures[LEFT_TOP_SHADOW_MAP_DEPTH];
-	shadowParams.shadowMaps[1] = textures[RIGHT_TOP_SHADOW_MAP_DEPTH];
-	shadowParams.shadowMaps[2] = textures[LEFT_BOTTOM_SHADOW_MAP_DEPTH];
-	shadowParams.shadowMaps[3] = textures[RIGHT_BOTTOM_SHADOW_MAP_DEPTH];
 	qSum = 0;
 	qSum2 = 0;
 	qSum3 = 0;
 
 	//double begin = cpu_time();
+	quadTreeShadowMapSamples = 0;
 	shadowParams.quadTreeEvaluation = true;
-	evaluateAreaLightSource(quadTreeLightSource, sampleIndices, frameBufferIndices);
+	evaluateAreaLightSource(quadTreeLightSource, quadTreeLightSource->getLevel());
 	shadowParams.quadTreeEvaluation = false;
 	//glFinish();
 	//double end = cpu_time();
@@ -711,7 +744,6 @@ void renderAdaptiveLightSourceSampling()
 	//std::cout << "	Occlusion Query: " << qSum3 << std::endl;
 	
 	//begin = cpu_time();
-	quadTreeShadowMapSamples = 0;
 	renderAreaLightSource(quadTreeLightSource, quadTreeLightSource->getLevel());
 	//glFinish();
 	//end = cpu_time();
@@ -733,8 +765,8 @@ void renderAdaptiveLightSourceSampling()
 	//end = cpu_time();
 	//std::cout << "Render Texture Array: " << end - begin << std::endl;
 	
-	//double end = cpu_time();
-	//std::cout << "Adaptive Sampling: " << end - begin << std::endl;
+	double end = cpu_time();
+	std::cout << "Adaptive Sampling: " << end - begin << std::endl;
 	
 	delete quadTreeLightSource;
 	quadTreeLightSource = new QuadTreeLightSource(lightSource);

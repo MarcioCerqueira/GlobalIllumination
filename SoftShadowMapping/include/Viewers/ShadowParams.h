@@ -7,7 +7,9 @@ typedef struct ShadowParams
 {
 	glm::mat4 lightMVP;
 	glm::mat4 lightMVPs[289];
+	glm::mat4 quadTreeLightMVPs[4];
 	glm::vec4 lightTrans[289];
+	int localQuadTreeHash[4];
 	int shadowMapWidth;
 	int shadowMapHeight;
 	int windowWidth;
@@ -52,7 +54,6 @@ typedef struct ShadowParams
 	GLuint partialAverageBlockerDepthMap;
 	GLuint vertexMap;
 	GLuint normalMap;
-	GLuint shadowMaps[4]; //adaptiveSampling
 } ShadowParams;
 
 #endif
