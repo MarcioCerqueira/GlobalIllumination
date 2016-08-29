@@ -5,7 +5,7 @@ t 0.0 -7.0 10.0
 c 1.0 0.0 0.0
 +
 o OBJ/Teapot/plane.obj
-m OBJ/Teapot/floor.png
+m OBJ/Teapot/white.png
 s 60.0 1.0 40.0
 t 0.0 -8.0 0.0
 +

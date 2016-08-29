@@ -4,7 +4,7 @@ t 0.0 -7.5 10.0
 c 0.8 0.8 0.8
 +
 o OBJ/YeahRight/plane.obj
-m OBJ/YeahRight/floor.png
+m OBJ/YeahRight/white.png
 s 60.0 1.0 40.0
 t 0.0 -8.0 0.0
 +

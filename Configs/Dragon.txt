@@ -4,16 +4,16 @@ t 0.0 -2.0 10.0
 c 1.0 0.0 0.0
 +
 o OBJ/Dragon/plane.obj
-m OBJ/Dragon/floor.png
+m OBJ/Dragon/white.png
 s 60.0 1.0 40.0
 t 0.0 -8.0 0.0
 +
-/o OBJ/Dragon/plane.obj
-/m OBJ/Dragon/wall.png
-/s 65.0 1.0 45.0
-/r 90 0 0
-/t 0.0 0.0 40.0
-/+
+o OBJ/Dragon/plane.obj
+m OBJ/Dragon/wall.png
+s 65.0 1.0 45.0
+r 90 0 0
+t 0.0 0.0 40.0
++
 ve 0.0 41.0 -50.0
 va 0.0 16.0 -10.0
 le 10.0 130.0 100.0

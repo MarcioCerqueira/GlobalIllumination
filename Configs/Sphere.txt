@@ -4,7 +4,7 @@ s 10.0 10.0 10.0
 t 0.0 3.0 15.0
 +
 o OBJ/Sphere/plane.obj
-m OBJ/Sphere/floor.png
+m OBJ/Sphere/white.png
 s 60.0 1.0 40.0
 t 0.0 -8.0 0.0
 +

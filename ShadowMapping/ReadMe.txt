@@ -15,3 +15,5 @@ It supports the following techniques:
 	- Shadow Map Silhouette Revectorization proposed in "Shadow Map Silhouette Revectorization" by V. Boundarev in 2014;
 
 	- Moment Shadow Mapping proposed in "Moment Shadow Mapping" by C. Peters and R. Klein in 2015;
+
+	- Revectorization-Based Shadow Mapping proposed in "Revectorization-Based Shadow Mapping" by M. Macedo and A. Apolinário in 2016;

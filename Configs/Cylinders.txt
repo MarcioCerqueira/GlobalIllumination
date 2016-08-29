@@ -23,7 +23,7 @@ t 18.0 4.0 10.0
 c 0.0 0.5 1.0
 +
 o OBJ/Cylinders/plane.obj
-m OBJ/Cylinders/floor.png
+m OBJ/Cylinders/white.png
 s 60.0 1.0 40.0
 t 0.0 -8.0 0.0
 +

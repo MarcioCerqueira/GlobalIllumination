@@ -4,7 +4,7 @@ t 0.0 1.0 10.0
 c 0.75 0.6 0.0
 +
 o OBJ/Armadillo/plane.obj
-m OBJ/Armadillo/floor.png
+m OBJ/Armadillo/white.png
 s 60.0 1.0 40.0
 t 0.0 -8.0 0.0
 +
