@@ -27,6 +27,21 @@ void MyGLTextureViewer::loadDepthComponentTexture(float *data, GLuint *texVBO, i
 
 }
 	
+void MyGLTextureViewer::loadRGTexture(float *data, GLuint *texVBO, int index, int imageWidth, int imageHeight, GLint param)
+{
+
+	glBindTexture(GL_TEXTURE_2D, texVBO[index]);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, param);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, param);
+	glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
+	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, imageWidth, imageHeight, 0, GL_RG, GL_FLOAT, data);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	
+}
+
 void MyGLTextureViewer::loadRGBTexture(const unsigned char *data, GLuint *texVBO, int index, int imageWidth, int imageHeight)
 {
 
@@ -68,7 +83,7 @@ void MyGLTextureViewer::loadRGBATexture(float *data, GLuint *texVBO, int index, 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, param);
 	glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
 	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, imageWidth, imageHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, imageWidth, imageHeight, 0, GL_RGBA, GL_FLOAT, data);
 	glGenerateMipmap(GL_TEXTURE_2D);
 	
 }
@@ -128,7 +143,30 @@ void MyGLTextureViewer::configureSeparableFilter(int order, float *kernel, bool 
 	
 	GLuint sigmaColorID = glGetUniformLocation(shaderProg, "sigmaColor");
 	glUniform1f(sigmaColorID, sigmaColor);
+
+}
+
+void MyGLTextureViewer::configureSeparableFilter(int order, bool horizontal, bool vertical, float shadowIntensity)
+{
+
+	glUseProgram(shaderProg);
+
+	GLuint orderID = glGetUniformLocation(shaderProg, "order");
+	glUniform1i(orderID, order);
 	
+	GLuint horizontalID = glGetUniformLocation(shaderProg, "horizontal");
+	glUniform1i(horizontalID, (int)horizontal);
+	
+	GLuint verticalID = glGetUniformLocation(shaderProg, "vertical");
+	glUniform1i(verticalID, (int)vertical);
+
+	GLuint shadowIntensityID = glGetUniformLocation(shaderProg, "shadowIntensity");
+	glUniform1f(shadowIntensityID, shadowIntensity);
+
+	GLuint separableFilterID = glGetUniformLocation(shaderProg, "separableFilter");
+	if(horizontal && vertical) glUniform1i(separableFilterID, 0);
+	else glUniform1i(separableFilterID, 1);
+
 }
 
 void MyGLTextureViewer::drawTextureQuad() 

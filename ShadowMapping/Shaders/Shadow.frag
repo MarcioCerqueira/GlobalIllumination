@@ -1,22 +1,16 @@
 uniform sampler2D shadowMap;
-uniform sampler2D texture0;
-uniform sampler2D texture1;
-uniform sampler2D texture2;
+uniform sampler2D vertexMap;
+uniform sampler2D normalMap;
+uniform mat4 MV;
 uniform mat4 lightMV;
 uniform mat4 lightP;
 uniform mat4 mQuantization;
 uniform mat4 mQuantizationInverse;
+uniform mat4 lightMVPInv;
+uniform mat3 normalMatrix;
 uniform vec4 tQuantization;
-varying vec3 N;
-varying vec3 v;  
-varying vec4 shadowCoord;
-varying vec3 uvTexture;
-varying vec3 meshColor;
-varying vec3 lv;
-varying vec3 ln;
 uniform vec3 lightPosition;
 uniform vec3 cameraPosition;
-uniform mat4 lightMVPInv;
 uniform float shadowIntensity;
 uniform int shadowMapWidth;
 uniform int shadowMapHeight;
@@ -29,55 +23,11 @@ uniform int MSM;
 uniform int naive;
 uniform int zNear;
 uniform int zFar;
-uniform int useTextureForColoring;
-uniform int useMeshColor;
-uniform int useAdaptiveDepthBias;
-uniform int debug;
 uniform int kernelOrder;
+uniform int penumbraSize;
 uniform mat4 MVP;
 uniform mat4 lightMVP;
-
-vec4 phong(float shadow)
-{
-
-	vec4 light_ambient = vec4(0.4, 0.4, 0.4, 1);
-    vec4 light_specular = vec4(0.25, 0.25, 0.25, 1);
-    vec4 light_diffuse = vec4(0.5, 0.5, 0.5, 1);
-    float shininess = 10.0;
-	float specShadow = shadow - shadowIntensity;
-
-    vec3 L = normalize(lightPosition.xyz - v);   
-    vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0)  
-    vec3 R = normalize(-reflect(L, N));  
- 
-    //calculate Ambient Term:  
-    vec4 Iamb = light_ambient;    
-
-    //calculate Diffuse Term:  
-    vec4 Idiff = light_diffuse * max(dot(N,L), 0.0);    
-   
-    // calculate Specular Term:
-    vec4 Ispec = specShadow * light_specular * pow(max(dot(R,E),0.0), 0.3 * shininess);
-
-    vec4 sceneColor;
-   
-    if(useTextureForColoring == 1) {
-		if(uvTexture.b > 0.99 && uvTexture.b < 1.001)
-			sceneColor = texture2D(texture0, vec2(uvTexture.rg));
-		else if(uvTexture.b > 1.999 && uvTexture.b < 2.001)
-			sceneColor = texture2D(texture1, vec2(uvTexture.rg));	
-		else if(uvTexture.b > 2.999 && uvTexture.b < 3.001)
-			sceneColor = texture2D(texture2, vec2(uvTexture.rg));
-		else
-			sceneColor = vec4(meshColor.r, meshColor.g, meshColor.b, 1);
-	} else if(useMeshColor == 1)
-		sceneColor = vec4(meshColor.r, meshColor.g, meshColor.b, 1);
-	else
-		sceneColor = gl_FrontLightModelProduct.sceneColor;
-   
-	return shadow * sceneColor * (Idiff + Ispec + Iamb);  
-   
-}
+varying vec2 f_texcoord;
 
 float linearize(float depth) {
 
@@ -140,25 +90,21 @@ float PCF(vec3 normalizedShadowCoord)
 	float incrHeight = 1.0/float(shadowMapHeight);
 	float illuminationCount = 0;
 	int numberOfSamples = kernelOrder * kernelOrder;
-	float offset = 1;//(float(kernelOrder) - 1.0) * 0.5;
+	float offset = float(penumbraSize);
 	float stepSize = 2 * offset/float(kernelOrder);
 	float distanceFromLight;
-
 	int count = 0;
-	illuminationCount = 0;
-
-	for(float w = -offset; w <= offset; w+=stepSize) {
-		for(float h = -offset; h <= offset; h+=stepSize) {
+	
+	for(float w = -offset; w < offset; w+=stepSize) {
+		for(float h = -offset; h < offset; h+=stepSize) {
 		
 			if(tricubicPCF == 1)
 				distanceFromLight = textureBicubic(shadowMap, vec2(normalizedShadowCoord.s + w * incrWidth, normalizedShadowCoord.t + h * incrHeight)).z;
 			if(bilinearPCF == 1)
 				distanceFromLight = texture2D(shadowMap, vec2(normalizedShadowCoord.s + w * incrWidth, normalizedShadowCoord.t + h * incrHeight)).z;
 			
-			if(normalizedShadowCoord.z <= distanceFromLight)
-				illuminationCount++;
-			else
-				illuminationCount += shadowIntensity;
+			if(normalizedShadowCoord.z <= distanceFromLight) illuminationCount++;
+			else illuminationCount += shadowIntensity;
 
 			count++;
 
@@ -273,59 +219,18 @@ float hamburger4MSM(vec3 normalizedShadowCoord)
 	
 }
 
-/*
-float adaptiveDepthBias(vec3 normalizedShadowCoord)
+float computePreEvaluationBasedOnNormalOrientation(vec4 vertex, vec4 normal)
 {
 
-	vec2 smBufferRes;
-	smBufferRes.x = 640;
-	smBufferRes.y = 480;
+	vertex = MV * vertex;
+	normal.xyz = normalize(normalMatrix * normal.xyz);
 
-	vec2 delta;
-	delta.x = 1.0 / smBufferRes.x;
-	delta.y = 1.0 / smBufferRes.y;
-
-	float viewBound = zNear * tan( 45*float( 3.141592653589793238462643 )/360.0f );
-	// Locate corresponding light space shadow map grid center
-    vec2 index = floor( vec2(normalizedShadowCoord.x * smBufferRes.x, normalizedShadowCoord.y * smBufferRes.y) );
-    vec2 nlsGridCenter = delta*(index + vec2(0.5)); // Normalized eye space grid center --- [0,1]
-    vec2 lsGridCenter = viewBound*( 2.0*nlsGridCenter - vec2(1.0) );
-    
-	// Light ray direction in light space
-    vec3 lsGridLineDir = normalize( vec3(lsGridCenter, -zNear) ); // Light space grid line direction    
-    
-	// Locate the potential occluder for the shading fragment
-    float ls_t_hit = dot(ln, lv.xyz) / dot(ln, lsGridLineDir);
-    vec3  ls_hit_p = ls_t_hit * lsGridLineDir;
-   
-    // Normalized depth value in shadow map
-	float SMDepth = texture2D(shadowMap, vec2(normalizedShadowCoord.st)).z;
-	float A = lightP[2][2];
-    float B = lightP[3][2];    
-    float adaptiveDepthBias = 0.5*pow(1.0 - A - 2.0*SMDepth, 2)*0.0001 / B; 
+	vec3 L = normalize(lightPosition.xyz - vertex.xyz);   
 	
-	// Use the intersection point as new look up point
-    vec4 lsPotentialoccluder = lightP * vec4(ls_hit_p, 1.0);
-    lsPotentialoccluder      = lsPotentialoccluder/lsPotentialoccluder.w;
-    lsPotentialoccluder      = 0.5 * lsPotentialoccluder + vec4(0.5, 0.5, 0.5, 0.0);
-   
-    float actualDepth = min(lsPotentialoccluder.z, normalizedShadowCoord.z);
-    float actualBias  = adaptiveDepthBias;
-    return actualDepth + actualBias;
+	if(!bool(normal.w))
+		normal.xyz *= -1;
 
-}
-*/
-
-float computePreEvaluationBasedOnNormalOrientation()
-{
-
-	vec3 L = normalize(lightPosition.xyz - v);   
-	vec3 N2 = N;
-
-	if(!gl_FrontFacing)
-		N2 *= -1;
-
-	if(max(dot(N2,L), 0.0) == 0) 
+	if(max(dot(normal.xyz,L), 0.0) == 0) 
 		return shadowIntensity;
 	else
 		return 1.0;
@@ -335,20 +240,19 @@ float computePreEvaluationBasedOnNormalOrientation()
 void main()
 {	
 
+	vec4 vertex = texture2D(vertexMap, f_texcoord);	
+	if(vertex.x == 0.0) discard; //Discard background scene
+
+	vec4 normal = texture2D(normalMap, f_texcoord);
+	vec4 shadowCoord = lightMVP * vertex;
 	vec4 normalizedShadowCoord = shadowCoord / shadowCoord.w;
-	//if(useAdaptiveDepthBias == 1) 
-		//normalizedShadowCoord.z = adaptiveDepthBias(normalizedShadowCoord);
-
-	float shadow = 1.0;
-	shadow = computePreEvaluationBasedOnNormalOrientation();
-
+	float shadow = computePreEvaluationBasedOnNormalOrientation(vertex, normal);
+	
 	if(shadowCoord.w > 0.0 && shadow == 1.0) {
 
 		if(naive == 1) {
 			float distanceFromLight = texture2D(shadowMap, vec2(normalizedShadowCoord.st)).z;		
-			//float distanceFromLight = texture2DProj(shadowMap, shadowCoord).z;
 			shadow = (normalizedShadowCoord.z <= distanceFromLight) ? 1.0 : shadowIntensity; 
-			//shadow = shadow2D(shadowMap, normalizedShadowCoord.xyz);
 		}
 		else if(VSM == 1)
 			shadow = varianceShadowMapping(normalizedShadowCoord.xyz);
@@ -362,18 +266,8 @@ void main()
 			shadow = PCF(normalizedShadowCoord.xyz);
 
 	}
-
-	if(bool(debug)) {
 	
-		if(shadow == shadowIntensity)	
-			gl_FragColor = vec4(0.0);
-		else	
-			gl_FragColor = vec4(1.0);
+	//shadow = linearize(texture2D(shadowMap, vec2(gl_FragCoord.x/1024.0, gl_FragCoord.y/1024.0)).z);
+	gl_FragColor = vec4(shadow, 0.0, 0.0, 1.0);
 	
-	} else { 
-		
-		gl_FragColor = phong(shadow);
-	
-	}
-
 }

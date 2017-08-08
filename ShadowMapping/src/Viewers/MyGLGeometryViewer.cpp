@@ -25,6 +25,45 @@ void MyGLGeometryViewer::configureAmbient(int windowWidth, int windowHeight)
 	
 }
 
+void MyGLGeometryViewer::configureGBuffer(ShadowParams shadowParams) {
+
+	GLuint vertexMap = glGetUniformLocation(shaderProg, "vertexMap");
+	glUniform1i(vertexMap, 8);
+	GLuint normalMap = glGetUniformLocation(shaderProg, "normalMap");
+	glUniform1i(normalMap, 9);
+	GLuint colorMap = glGetUniformLocation(shaderProg, "colorMap");
+	glUniform1i(colorMap, 10);
+	if(shadowParams.useHardShadowMap) {
+		GLuint hardShadowMap = glGetUniformLocation(shaderProg, "hardShadowMap");
+		glUniform1i(hardShadowMap, 11);
+	}
+
+	glActiveTexture(GL_TEXTURE8);
+	glBindTexture(GL_TEXTURE_2D, shadowParams.vertexMap);
+
+	glActiveTexture(GL_TEXTURE9);
+	glBindTexture(GL_TEXTURE_2D, shadowParams.normalMap);
+		
+	glActiveTexture(GL_TEXTURE10);
+	glBindTexture(GL_TEXTURE_2D, shadowParams.colorMap);
+	
+	glActiveTexture(GL_TEXTURE11);
+	glBindTexture(GL_TEXTURE_2D, shadowParams.hardShadowMap);
+	
+	glActiveTexture(GL_TEXTURE8);
+	glDisable(GL_TEXTURE_2D);
+
+	glActiveTexture(GL_TEXTURE9);
+	glDisable(GL_TEXTURE_2D);
+		
+	glActiveTexture(GL_TEXTURE10);
+	glDisable(GL_TEXTURE_2D);
+	
+	glActiveTexture(GL_TEXTURE11);
+	glDisable(GL_TEXTURE_2D);
+
+}
+
 void MyGLGeometryViewer::configureLight() {
 	
 	GLfloat ambient[4] = {0.1, 0.1, 0.1, 1.0};
@@ -77,6 +116,8 @@ void MyGLGeometryViewer::configurePhong(glm::vec3 lightPosition, glm::vec3 camer
 		hasNormalMatrixBeenSet = true;
 	} 
 
+	GLuint fovID = glGetUniformLocation(shaderProg, "fov");
+	glUniform1f(fovID, fov);
 	GLuint mvpId = glGetUniformLocation(shaderProg, "MVP");
 	glUniformMatrix4fv(mvpId, 1, GL_FALSE, &mvp[0][0]);
 	GLuint inverseMVPID = glGetUniformLocation(shaderProg, "inverseMVP");
@@ -127,12 +168,10 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	configureMoments(shadowParams);
 	GLuint shadowMapNaiveID = glGetUniformLocation(shaderProg, "naive");
 	glUniform1i(shadowMapNaiveID, shadowParams.naive);
-	GLuint shadowMapDepthBiasID = glGetUniformLocation(shaderProg, "useAdaptiveDepthBias");
-	glUniform1i(shadowMapDepthBiasID, shadowParams.adaptiveDepthBias);
-	GLuint debugID = glGetUniformLocation(shaderProg, "debug");
-	glUniform1i(debugID, (int)shadowParams.debug);
 	GLuint kernelOrderID = glGetUniformLocation(shaderProg, "kernelOrder");
 	glUniform1i(kernelOrderID, (int)shadowParams.kernelOrder);
+	GLuint penumbraSizeID = glGetUniformLocation(shaderProg, "penumbraSize");
+	glUniform1i(penumbraSizeID, shadowParams.penumbraSize);
 	GLuint shadowMap = glGetUniformLocation(shaderProg, "shadowMap");
 	glUniform1i(shadowMap, 0);
 
@@ -209,17 +248,9 @@ void MyGLGeometryViewer::configureRevectorization(ShadowParams shadowParams, int
 	glUniformMatrix4fv(inverseLightMVPID, 1, GL_FALSE, &inverseMVP[0][0]);
 	GLuint kernelOrderID = glGetUniformLocation(shaderProg, "kernelOrder");
 	glUniform1i(kernelOrderID, (int)shadowParams.kernelOrder);
-	
-	GLuint showEnteringDiscontinuityMapID = glGetUniformLocation(shaderProg, "showEnteringDiscontinuity");
-	glUniform1i(showEnteringDiscontinuityMapID, shadowParams.showEnteringDiscontinuityMap);
-	GLuint showExitingDiscontinuityMapID = glGetUniformLocation(shaderProg, "showExitingDiscontinuity");
-	glUniform1i(showExitingDiscontinuityMapID, shadowParams.showExitingDiscontinuityMap);
-	GLuint showONDSID = glGetUniformLocation(shaderProg, "showONDS");
-	glUniform1i(showONDSID, shadowParams.showONDS);
-	GLuint showClippedONDSID = glGetUniformLocation(shaderProg, "showClippedONDS");
-	glUniform1i(showClippedONDSID, shadowParams.showClippedONDS);
-	GLuint showSubCoordID = glGetUniformLocation(shaderProg, "showSubCoord");
-	glUniform1i(showSubCoordID, shadowParams.showSubCoord);
+	GLuint penumbraSizeID = glGetUniformLocation(shaderProg, "penumbraSize");
+	glUniform1i(penumbraSizeID, shadowParams.penumbraSize);
+
 	GLuint RSMSSID = glGetUniformLocation(shaderProg, "RSMSS");
 	glUniform1i(RSMSSID, shadowParams.RSMSS);
 	GLuint SMSRID = glGetUniformLocation(shaderProg, "SMSR");
@@ -228,8 +259,8 @@ void MyGLGeometryViewer::configureRevectorization(ShadowParams shadowParams, int
 	glUniform1i(RPCFID, shadowParams.RPCFPlusSMSR);
 	GLuint RPCFSubCoordID = glGetUniformLocation(shaderProg, "RPCFPlusRSMSS");
 	glUniform1i(RPCFSubCoordID, shadowParams.RPCFPlusRSMSS);
-	GLuint debugID = glGetUniformLocation(shaderProg, "debug");
-	glUniform1i(debugID, (int)shadowParams.debug);
+	GLuint EDTSMID = glGetUniformLocation(shaderProg, "EDTSM");
+	glUniform1i(EDTSMID, shadowParams.EDTSM);
 	GLuint shadowID = glGetUniformLocation(shaderProg, "shadowMap");
 	glUniform1i(shadowID, 7);
 	

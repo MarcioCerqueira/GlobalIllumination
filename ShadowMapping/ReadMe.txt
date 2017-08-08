@@ -17,3 +17,5 @@ It supports the following techniques:
 	- Moment Shadow Mapping proposed in "Moment Shadow Mapping" by C. Peters and R. Klein in 2015;
 
 	- Revectorization-Based Shadow Mapping proposed in "Revectorization-Based Shadow Mapping" by M. Macedo and A. Apolinário in 2016;
+
+	- Euclidean DIstance Transform Shadow Mapping proposed in "Euclidean Distance Transform Shadow Mapping" by M. Macedo and A. Apolinário in 2017;

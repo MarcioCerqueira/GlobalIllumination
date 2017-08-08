@@ -11,6 +11,8 @@ typedef struct ShadowParams
 	int shadowMapWidth;
 	int shadowMapHeight;
 	int maxSearch; //SMSR
+	int kernelOrder;
+	int penumbraSize;
 	float depthThreshold; //SMSR
 	float shadowIntensity;
 	bool tricubicPCF;
@@ -20,18 +22,18 @@ typedef struct ShadowParams
 	bool EVSM;
 	bool MSM; //Hamburger
 	bool naive;
-	bool adaptiveDepthBias;
 	bool SMSR;
-	bool showEnteringDiscontinuityMap; //SMSR
-	bool showExitingDiscontinuityMap; //SMSR
-	bool showONDS; //SMSR
-	bool showClippedONDS; //SMSR
-	bool showSubCoord; //SMSR
 	bool RPCFPlusSMSR; //SMSR
 	bool RSMSS; //SMSR
 	bool RPCFPlusRSMSS; //SMSR
-	bool debug;
+	bool EDTSM;
+	bool useHardShadowMap;
+	bool useSeparableFilter;
 	GLuint shadowMap;
+	GLuint vertexMap;
+	GLuint normalMap;
+	GLuint colorMap;
+	GLuint hardShadowMap;
 } ShadowParams;
 
 #endif
