@@ -18,6 +18,7 @@ class MyGLGeometryViewer
 public:
 	MyGLGeometryViewer();
 	void configureAmbient(int windowWidth, int windowHeight);
+	void configureGBuffer(ShadowParams shadowParams);
 	void configureLight();	
 	void configureLinearization();
 	void configureMoments(ShadowParams shadowParams);

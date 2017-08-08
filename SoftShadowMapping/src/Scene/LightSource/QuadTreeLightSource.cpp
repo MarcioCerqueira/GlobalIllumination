@@ -26,16 +26,25 @@ QuadTreeLightSource::~QuadTreeLightSource() {
 	if(hasChildren)
 		for(int node = 0; node < 4; node++)
 			delete nodes[node];
+	
+	hasChildren = true;
 
 }
 
 void QuadTreeLightSource::buildFirstLevel() {
 	
-	referenceSampleEye = LightSource::getEye();
-	referenceSampleAt = LightSource::getAt();
 	level = 0;
 	weight = 0.25;
 	configureLeafNodes();
+	updateReferenceSamples(LightSource::getEye(), LightSource::getAt());
+
+}
+
+void QuadTreeLightSource::condense() {
+	
+	hasChildren = false;
+	for(int node = 0; node < 4; node++)
+		delete nodes[node];
 
 }
 
@@ -98,4 +107,23 @@ glm::vec3 QuadTreeLightSource::computeReferenceSamples(glm::vec3 sample, int sam
 	
 	return sample;
 
+}
+
+void QuadTreeLightSource::updateReferenceSamples(glm::vec3 referenceSampleEye, glm::vec3 referenceSampleAt) {
+
+	this->referenceSampleEye = referenceSampleEye;
+	this->referenceSampleAt = referenceSampleAt;
+
+	if(hasChildren) {
+
+		glm::vec3 childNodeEye[4];
+		glm::vec3 childNodeAt[4];
+
+		for(int node = 0; node < 4; node++) {
+			childNodeEye[node] = computeReferenceSamples(referenceSampleEye, node);
+			childNodeAt[node] = computeReferenceSamples(referenceSampleAt, node);
+			nodes[node]->updateReferenceSamples(childNodeEye[node], childNodeAt[node]);
+		}
+	
+	}
 }

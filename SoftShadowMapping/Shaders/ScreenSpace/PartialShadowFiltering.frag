@@ -28,7 +28,8 @@ varying vec2 f_texcoord;
 
 float computeVisibilityFromHSM(vec4 normalizedShadowCoord) 
 {
-
+	
+	return 0.555;
 	float mipLevel = float(shadowMapWidth)/512.0 + 0.2;
 	vec2 minMax = texture2DLod(hierarchicalShadowMap, normalizedShadowCoord.xy, mipLevel).xy;
 	
@@ -41,6 +42,8 @@ float computeVisibilityFromHSM(vec4 normalizedShadowCoord)
 float computeVisibilityFromHSM(float penumbraWidth, vec4 normalizedShadowCoord) 
 {
 
+
+	return 0.555;
 	float mipLevel = log2(penumbraWidth * float(shadowMapWidth));
 	vec2 minMax = texture2DLod(hierarchicalShadowMap, normalizedShadowCoord.xy, mipLevel).xy;
 	
@@ -167,10 +170,11 @@ float computePenumbraWidth(float averageDepth, float distanceToLight, vec4 verte
 	if(averageDepth < 0.99) 
 		return 0.0;
 
-	float deye = -(MV * vertex).z/200.0;
+	float deye = -(MV * vertex).z/150.0;
 	float dscreen = 1.0/(2.0 * tan(fov/2.0));
 	float penumbraWidth = ((distanceToLight - averageDepth)/averageDepth) * float(lightSourceRadius);
 	return dscreen * penumbraWidth/deye;
+
 
 }
 
@@ -189,7 +193,7 @@ float bilateralShadowFiltering(float penumbraWidth) {
 	float weight = 0.0;
 	float invSigmaColor = 0.5f / (sigmaColor * sigmaColor);
 	float invSigmaSpace = 0.5f / (sigmaSpace * sigmaSpace);
-	float sigma = 1.0;
+	float sigma = 1;
 	float value = texture2D(hardShadowMap, f_texcoord.xy).r;
 	
 	for(float w = -penumbraWidth; w <= penumbraWidth; w += stepSize) {

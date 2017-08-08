@@ -38,7 +38,7 @@ extern GLuint FragmentShaderObject;
 
 extern GLuint 	shaderVS; 
 extern GLuint 	shaderFS; 
-extern GLuint 	shaderProg[25];   // handles to objects
+extern GLuint 	shaderProg[30];   // handles to objects
 extern GLint  	linked;
 
 

@@ -25,6 +25,35 @@ void MyGLGeometryViewer::configureAmbient(int windowWidth, int windowHeight)
 	
 }
 
+void MyGLGeometryViewer::configureGBuffer(ShadowParams shadowParams) {
+
+	GLuint vertexMap = glGetUniformLocation(shaderProg, "vertexMap");
+	glUniform1i(vertexMap, 8);
+	GLuint normalMap = glGetUniformLocation(shaderProg, "normalMap");
+	glUniform1i(normalMap, 9);
+	GLuint colorMap = glGetUniformLocation(shaderProg, "colorMap");
+	glUniform1i(colorMap, 10);
+
+	glActiveTexture(GL_TEXTURE8);
+	glBindTexture(GL_TEXTURE_2D, shadowParams.vertexMap);
+
+	glActiveTexture(GL_TEXTURE9);
+	glBindTexture(GL_TEXTURE_2D, shadowParams.normalMap);
+	
+	glActiveTexture(GL_TEXTURE10);
+	glBindTexture(GL_TEXTURE_2D, shadowParams.colorMap);
+
+	glActiveTexture(GL_TEXTURE8);
+	glDisable(GL_TEXTURE_2D);
+
+	glActiveTexture(GL_TEXTURE9);
+	glDisable(GL_TEXTURE_2D);
+		
+	glActiveTexture(GL_TEXTURE10);
+	glDisable(GL_TEXTURE_2D);
+
+}
+
 void MyGLGeometryViewer::configureLight() {
 	
 	GLfloat ambient[4] = {0.1, 0.1, 0.1, 1.0};
@@ -128,7 +157,7 @@ void MyGLGeometryViewer::configurePhong(glm::vec3 lightPosition, glm::vec3 camer
 void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams) 
 {
 	
-	bool screenSpace = shadowParams.SSPCSS || shadowParams.SSABSS || shadowParams.SSSM || shadowParams.SSRBSSM;
+	bool screenSpace = shadowParams.SSPCSS || shadowParams.SSABSS || shadowParams.SSSM || shadowParams.SSRBSSM || shadowParams.SSEDTSSM;
 	
 	glm::mat4 bias;
 	bias[0][0] = 0.5;	bias[0][1] = 0;		bias[0][2] = 0;		bias[0][3] = 0.0;
@@ -141,7 +170,6 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glUniformMatrix4fv(lightMVPID, 1, GL_FALSE, &shadowParams.lightMVP[0][0]);
 	GLuint inverseMVPID = glGetUniformLocation(shaderProg, "inverseLightMVP");
 	glUniformMatrix4fv(inverseMVPID, 1, GL_FALSE, &glm::inverse(shadowParams.lightMVP)[0][0]);
-	
 	if(shadowParams.adaptiveSampling && shadowParams.quadTreeEvaluation) {
 
 		GLuint indexID = glGetUniformLocation(shaderProg, "shadowMapIndices");
@@ -190,13 +218,19 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		glUniform1f(blockerThresholdID, shadowParams.blockerThreshold);
 		GLuint filterThresholdID = glGetUniformLocation(shaderProg, "filterThreshold");
 		glUniform1i(filterThresholdID, shadowParams.filterThreshold);
-	} else if(shadowParams.RBSSM || shadowParams.SSRBSSM) {
+	} else if(shadowParams.RBSSM || shadowParams.SSRBSSM || shadowParams.revectorizationBasedAdaptiveSampling || shadowParams.EDTSSM || shadowParams.SSEDTSSM) {
 		GLuint maxSearch = glGetUniformLocation(shaderProg, "maxSearch");
 		glUniform1i(maxSearch, shadowParams.maxSearch);
 		GLuint depthThreshold = glGetUniformLocation(shaderProg, "depthThreshold");
 		glUniform1f(depthThreshold, shadowParams.depthThreshold);
 		GLuint shadowMapStep = glGetUniformLocation(shaderProg, "shadowMapStep");
 		glUniform2f(shadowMapStep, 1.0/shadowParams.shadowMapWidth, 1.0/shadowParams.shadowMapHeight);
+		GLuint currentShadowMapSampleID = glGetUniformLocation(shaderProg, "currentShadowMapSample");
+		glUniform1i(currentShadowMapSampleID, shadowParams.currentShadowMapSample);
+		GLuint quadTreeLevelID = glGetUniformLocation(shaderProg, "quadTreeLevel");
+		glUniform1i(quadTreeLevelID, shadowParams.quadTreeLevel);
+		GLuint RPCFID = glGetUniformLocation(shaderProg, "RPCF"); //revectorizationBasedAdaptiveSampling
+		glUniform1i(RPCFID, shadowParams.RPCF);
 	}
 	GLuint SATID = glGetUniformLocation(shaderProg, "SAT");
 	glUniform1i(SATID, shadowParams.SAT);
@@ -218,28 +252,22 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 	glUniform1i(SSSMID, shadowParams.SSSM);
 	GLuint SSRBSSMID = glGetUniformLocation(shaderProg, "SSRBSSM");
 	glUniform1i(SSRBSSMID, shadowParams.SSRBSSM);
+	GLuint SSEDTSSMID = glGetUniformLocation(shaderProg, "SSEDTSSM");
+	glUniform1i(SSEDTSSMID, shadowParams.SSEDTSSM);
 	configureMoments(shadowParams);
 	GLuint shadowMap = glGetUniformLocation(shaderProg, "shadowMap");
 	glUniform1i(shadowMap, 0);
 
-	if(shadowParams.monteCarlo || (shadowParams.adaptiveSampling && !shadowParams.quadTreeEvaluation)) {
-		
-		GLuint shadowMapArray = glGetUniformLocation(shaderProg, "shadowMapArray");
-		glUniform1i(shadowMapArray, 1);
-
-	} else if((shadowParams.adaptiveSampling && shadowParams.quadTreeEvaluation) || screenSpace) {
+	if(shadowParams.renderFromGBuffer) {
 
 		GLuint vertexMap = glGetUniformLocation(shaderProg, "vertexMap");
 		glUniform1i(vertexMap, 8);
 		GLuint normalMap = glGetUniformLocation(shaderProg, "normalMap");
 		glUniform1i(normalMap, 9);
-		
-		if(shadowParams.quadTreeEvaluation) {
-		
-			GLuint shadowMapArray = glGetUniformLocation(shaderProg, "shadowMapArray");
-			glUniform1i(shadowMapArray, 10);
+		GLuint colorMap = glGetUniformLocation(shaderProg, "colorMap");
+		glUniform1i(colorMap, 10);
 
-		} else if(shadowParams.useSoftShadowMap) {
+		if(shadowParams.useSoftShadowMap) {
 		
 			GLuint accumulationMap = glGetUniformLocation(shaderProg, "softShadowMap");
 			glUniform1i(accumulationMap, 1);
@@ -249,33 +277,42 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 			GLuint hardShadowMap = glGetUniformLocation(shaderProg, "hardShadowMap");
 			glUniform1i(hardShadowMap, 1);
 			
+		} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM) {
+
+			GLuint SATShadowMap = glGetUniformLocation(shaderProg, "SATShadowMap");
+			glUniform1i(SATShadowMap, 1);
+
 		} 
 
-	} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM) {
-
-		GLuint SATShadowMap = glGetUniformLocation(shaderProg, "SATShadowMap");
-		glUniform1i(SATShadowMap, 1);
-
-	} 
+	}
 	
 	if(shadowParams.useHierarchicalShadowMap) {
 		
 		GLuint hierarchicalShadowMap = glGetUniformLocation(shaderProg, "hierarchicalShadowMap");
-		glUniform1i(hierarchicalShadowMap, 10);
+		glUniform1i(hierarchicalShadowMap, 11);
 		
-	}
+	} else if(shadowParams.monteCarlo || shadowParams.adaptiveSampling) {
+		
+		GLuint shadowMapArray = glGetUniformLocation(shaderProg, "shadowMapArray");
+		glUniform1i(shadowMapArray, 11);
 
+	} 
+	
+	if(shadowParams.revectorizationBasedQuadTreeEvaluation) {
+
+		GLuint discontinuityMapArray = glGetUniformLocation(shaderProg, "discontinuityMapArray");
+		glUniform1i(discontinuityMapArray, 12);
+		GLuint visibilityMap = glGetUniformLocation(shaderProg, "visibilityMap");
+		glUniform1i(visibilityMap, 13);
+
+	}
+	
 	configureLinearization();
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, shadowParams.shadowMap);
 
-	if(shadowParams.monteCarlo || (shadowParams.adaptiveSampling && !shadowParams.quadTreeEvaluation)) {
-
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D_ARRAY, shadowParams.shadowMapArray);
-
-	} else if((shadowParams.adaptiveSampling && shadowParams.quadTreeEvaluation) || screenSpace) {
+	if(shadowParams.renderFromGBuffer) {
 
 		glActiveTexture(GL_TEXTURE8);
 		glBindTexture(GL_TEXTURE_2D, shadowParams.vertexMap);
@@ -283,12 +320,10 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 		glActiveTexture(GL_TEXTURE9);
 		glBindTexture(GL_TEXTURE_2D, shadowParams.normalMap);
 		
-		if(shadowParams.quadTreeEvaluation) {
-			
-			glActiveTexture(GL_TEXTURE10);
-			glBindTexture(GL_TEXTURE_2D_ARRAY, shadowParams.shadowMapArray);
-
-		} else if(shadowParams.useSoftShadowMap) {
+		glActiveTexture(GL_TEXTURE10);
+		glBindTexture(GL_TEXTURE_2D, shadowParams.colorMap);
+		
+		if(shadowParams.useSoftShadowMap) {
 
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, shadowParams.softShadowMap);
@@ -298,62 +333,79 @@ void MyGLGeometryViewer::configureShadow(ShadowParams shadowParams)
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, shadowParams.hardShadowMap);
 			 
-		}
+		} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM) {
 
-	} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM) {
-
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, shadowParams.SATShadowMap);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, shadowParams.SATShadowMap);
 		
-	} 
+		} 
+
+	}
 	
 	if(shadowParams.useHierarchicalShadowMap) {
 		
-		glActiveTexture(GL_TEXTURE10);
+		glActiveTexture(GL_TEXTURE11);
 		glBindTexture(GL_TEXTURE_2D, shadowParams.hierarchicalShadowMap);
 		
+	} else if(shadowParams.monteCarlo || shadowParams.adaptiveSampling) {
+
+		glActiveTexture(GL_TEXTURE11);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shadowParams.shadowMapArray);
+
+	} 
+	
+	if(shadowParams.revectorizationBasedAdaptiveSampling) {
+
+		glActiveTexture(GL_TEXTURE12);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shadowParams.discontinuityMapArray);
+		glActiveTexture(GL_TEXTURE13);
+		glBindTexture(GL_TEXTURE_2D, shadowParams.visibilityMap);
+
 	}
 
 	glActiveTexture(GL_TEXTURE0);
 	glDisable(GL_TEXTURE_2D);
-
-	if(shadowParams.monteCarlo && (shadowParams.adaptiveSampling && !shadowParams.quadTreeEvaluation)) {
-
-		glActiveTexture(GL_TEXTURE1);
-		glDisable(GL_TEXTURE_2D_ARRAY);
-
-	} else if((shadowParams.adaptiveSampling && shadowParams.quadTreeEvaluation) || screenSpace) {
+	
+	if(shadowParams.renderFromGBuffer) {
 
 		glActiveTexture(GL_TEXTURE8);
 		glDisable(GL_TEXTURE_2D);
 
 		glActiveTexture(GL_TEXTURE9);
 		glDisable(GL_TEXTURE_2D);
+		
+		glActiveTexture(GL_TEXTURE10);
+		glDisable(GL_TEXTURE_2D);
 
-		if(shadowParams.quadTreeEvaluation) {
-
-			glActiveTexture(GL_TEXTURE10);
-			glDisable(GL_TEXTURE_2D_ARRAY);
-
-		} else if((screenSpace && (shadowParams.useHardShadowMap || shadowParams.usePartialAverageBlockerDepthMap))) {
+		if((screenSpace && (shadowParams.useHardShadowMap || shadowParams.usePartialAverageBlockerDepthMap)) || 
+			(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM)) {
 		
 			glActiveTexture(GL_TEXTURE1);
 			glDisable(GL_TEXTURE_2D);
 		
 		}
 
-	} else if(shadowParams.SAVSM || shadowParams.VSSM || shadowParams.ESSM || shadowParams.MSSM) {
-	
-		glActiveTexture(GL_TEXTURE1);
-		glDisable(GL_TEXTURE_2D);
-
 	} 
 	
 	if(shadowParams.useHierarchicalShadowMap) {
 			
-		glActiveTexture(GL_TEXTURE10);
+		glActiveTexture(GL_TEXTURE11);
 		glDisable(GL_TEXTURE_2D);
 		
+	} else if(shadowParams.monteCarlo && shadowParams.adaptiveSampling) {
+
+		glActiveTexture(GL_TEXTURE11);
+		glDisable(GL_TEXTURE_2D_ARRAY);
+
+	} 
+	
+	if(shadowParams.revectorizationBasedAdaptiveSampling) {
+	
+		glActiveTexture(GL_TEXTURE12);
+		glDisable(GL_TEXTURE_2D_ARRAY);
+		glActiveTexture(GL_TEXTURE13);
+		glDisable(GL_TEXTURE_2D_ARRAY);
+	
 	}
 
 }

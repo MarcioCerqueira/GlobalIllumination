@@ -1,14 +1,10 @@
 #extension GL_EXT_texture_array : enable
 uniform sampler2DArray shadowMapArray;
-uniform sampler2D texture0;
-uniform sampler2D texture1;
-uniform sampler2D texture2;
-varying vec4 vertex4;
-varying vec3 N;
-varying vec3 v;  
-varying vec3 uvTexture;
-varying vec3 meshColor;
+uniform sampler2D vertexMap;
+uniform sampler2D normalMap;
 uniform mat4 lightMVP;
+uniform mat4 MV;
+uniform mat3 normalMatrix;
 uniform vec3 lightPosition;
 uniform vec4 lightMVPTrans[289];
 uniform float shadowIntensity;
@@ -17,64 +13,23 @@ uniform int windowWidth;
 uniform int windowHeight;
 uniform int shadowMapWidth;
 uniform int shadowMapHeight;
-uniform int useTextureForColoring;
-uniform int useMeshColor;
 uniform int monteCarlo;
 uniform int adaptiveSampling;
 uniform int adaptiveSamplingLowerAccuracy;
+varying vec2 f_texcoord;
 
-vec4 phong(float shadow)
+float computePreEvaluationBasedOnNormalOrientation(vec4 vertex, vec4 normal)
 {
 
-	vec4 light_ambient = vec4(0.4, 0.4, 0.4, 1);
-    vec4 light_specular = vec4(0.25, 0.25, 0.25, 1);
-    vec4 light_diffuse = vec4(0.5, 0.5, 0.5, 1);
-    float shininess = 10.0;
-	float specShadow = shadow - shadowIntensity;
+	vertex = MV * vertex;
+	normal.xyz = normalize(normalMatrix * normal.xyz);
 
-    vec3 L = normalize(lightPosition.xyz - v);   
-    vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0)  
-    vec3 R = normalize(-reflect(L, N));  
- 
-    //calculate Ambient Term:  
-    vec4 Iamb = light_ambient;    
+	vec3 L = normalize(lightPosition.xyz - vertex.xyz);   
+	
+	if(!bool(normal.w))
+		normal.xyz *= -1;
 
-    //calculate Diffuse Term:  
-    vec4 Idiff = light_diffuse * max(dot(N,L), 0.0);    
-   
-    // calculate Specular Term:
-    vec4 Ispec = specShadow * light_specular * pow(max(dot(R,E),0.0), 0.3 * shininess);
-
-    vec4 sceneColor;
-   
-    if(useTextureForColoring == 1) {
-		if(uvTexture.b > 0.99 && uvTexture.b < 1.001)
-			sceneColor = texture2D(texture0, vec2(uvTexture.rg));
-		else if(uvTexture.b > 1.999 && uvTexture.b < 2.001)
-			sceneColor = texture2D(texture1, vec2(uvTexture.rg));	
-		else if(uvTexture.b > 2.999 && uvTexture.b < 3.001)
-			sceneColor = texture2D(texture2, vec2(uvTexture.rg));
-		else
-			sceneColor = vec4(meshColor.r, meshColor.g, meshColor.b, 1);
-	} else if(useMeshColor == 1)
-		sceneColor = vec4(meshColor.r, meshColor.g, meshColor.b, 1);
-	else
-		sceneColor = gl_FrontLightModelProduct.sceneColor;
-   
-	return shadow * sceneColor * (Idiff + Ispec + Iamb);  
-   
-}
-
-float computePreEvaluationBasedOnNormalOrientation()
-{
-
-	vec3 L = normalize(lightPosition.xyz - v);   
-	vec3 N2 = N;
-
-	if(!gl_FrontFacing)
-		N2 *= -1;
-
-	if(max(dot(N2,L), 0.0) == 0.0) 
+	if(max(dot(normal.xyz,L), 0.0) == 0) 
 		return shadowIntensity;
 	else
 		return 1.0;
@@ -97,7 +52,11 @@ float myPow(float value, int exponent) {
 void main()
 {	
 
-	float shadow = computePreEvaluationBasedOnNormalOrientation();
+	vec4 vertex = texture2D(vertexMap, f_texcoord);
+	if(vertex.x == 0.0) discard; //Discard background scene
+
+	vec4 normal = texture2D(normalMap, f_texcoord);
+	float shadow = computePreEvaluationBasedOnNormalOrientation(vertex, normal);
 	
 	if(shadow == 1.0) {
 		
@@ -108,14 +67,13 @@ void main()
 		float count = 0;
 		float accFactor = 1.0;
 
-		commonShadowCoord.x = lightMVP[0][0] * vertex4.x + lightMVP[1][0] * vertex4.y + lightMVP[2][0] * vertex4.z;
-		commonShadowCoord.y = lightMVP[0][1] * vertex4.x + lightMVP[1][1] * vertex4.y + lightMVP[2][1] * vertex4.z;
-		commonShadowCoord.z = lightMVP[0][2] * vertex4.x + lightMVP[1][2] * vertex4.y + lightMVP[2][2] * vertex4.z;
-		commonShadowCoord.w = lightMVP[0][3] * vertex4.x + lightMVP[1][3] * vertex4.y + lightMVP[2][3] * vertex4.z;
+		commonShadowCoord.x = lightMVP[0][0] * vertex.x + lightMVP[1][0] * vertex.y + lightMVP[2][0] * vertex.z;
+		commonShadowCoord.y = lightMVP[0][1] * vertex.x + lightMVP[1][1] * vertex.y + lightMVP[2][1] * vertex.z;
+		commonShadowCoord.z = lightMVP[0][2] * vertex.x + lightMVP[1][2] * vertex.y + lightMVP[2][2] * vertex.z;
+		commonShadowCoord.w = lightMVP[0][3] * vertex.x + lightMVP[1][3] * vertex.y + lightMVP[2][3] * vertex.z;
 
 		for(int index = 0; index < numberOfSamples; index++) {
-			
-			
+				
 			if(adaptiveSampling == 1) {
 			
 				int quadTreeLevel = lightMVPTrans[index].w / 10000;
@@ -127,7 +85,6 @@ void main()
 			
 			} else {
 			
-
 				shadowCoord = commonShadowCoord + lightMVPTrans[index];
 			
 			}
@@ -171,6 +128,6 @@ void main()
 
 	}
 	
-	gl_FragColor = phong(shadow);
+	gl_FragColor = vec4(shadow, 0.0, 0.0, 1.0);
 	
 }

@@ -1,16 +1,13 @@
 uniform sampler2D shadowMap;
+uniform sampler2D vertexMap;
+uniform sampler2D normalMap;
 uniform sampler2D SATShadowMap;
 uniform sampler2D hierarchicalShadowMap;
-uniform sampler2D texture0;
-uniform sampler2D texture1;
-uniform sampler2D texture2;
-uniform vec4 momentTranslationVector;
 uniform mat4 momentInverseRotationMatrix;
-varying vec4 shadowCoord;
-varying vec3 N;
-varying vec3 v;  
-varying vec3 uvTexture;
-varying vec3 meshColor;
+uniform mat4 MV;
+uniform mat4 lightMVP;
+uniform mat3 normalMatrix;
+uniform vec4 momentTranslationVector;
 uniform vec3 lightPosition;
 uniform float shadowIntensity;
 uniform float accFactor;
@@ -31,59 +28,20 @@ uniform int VSSM;
 uniform int ESSM;
 uniform int MSSM;
 uniform int SAT;
+varying vec2 f_texcoord;
 
-vec4 phong(float shadow)
+float computePreEvaluationBasedOnNormalOrientation(vec4 vertex, vec4 normal)
 {
 
-	vec4 light_ambient = vec4(0.4, 0.4, 0.4, 1);
-    vec4 light_specular = vec4(0.25, 0.25, 0.25, 1);
-    vec4 light_diffuse = vec4(0.5, 0.5, 0.5, 1);
-    float shininess = 10.0;
-	float specShadow = shadow - shadowIntensity;
+	vertex = MV * vertex;
+	normal.xyz = normalize(normalMatrix * normal.xyz);
 
-    vec3 L = normalize(lightPosition.xyz - v);   
-    vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0)  
-    vec3 R = normalize(-reflect(L, N));  
- 
-    //calculate Ambient Term:  
-    vec4 Iamb = light_ambient;    
+	vec3 L = normalize(lightPosition.xyz - vertex.xyz);   
+	
+	if(!bool(normal.w))
+		normal.xyz *= -1;
 
-    //calculate Diffuse Term:  
-    vec4 Idiff = light_diffuse * max(dot(N,L), 0.0);    
-   
-    // calculate Specular Term:
-    vec4 Ispec = specShadow * light_specular * pow(max(dot(R,E),0.0), 0.3 * shininess);
-
-    vec4 sceneColor;
-   
-    if(useTextureForColoring == 1) {
-		if(uvTexture.b > 0.99 && uvTexture.b < 1.001)
-			sceneColor = texture2D(texture0, vec2(uvTexture.rg));
-		else if(uvTexture.b > 1.999 && uvTexture.b < 2.001)
-			sceneColor = texture2D(texture1, vec2(uvTexture.rg));	
-		else if(uvTexture.b > 2.999 && uvTexture.b < 3.001)
-			sceneColor = texture2D(texture2, vec2(uvTexture.rg));
-		else
-			sceneColor = vec4(meshColor.r, meshColor.g, meshColor.b, 1);
-	} else if(useMeshColor == 1)
-		sceneColor = vec4(meshColor.r, meshColor.g, meshColor.b, 1);
-	else
-		sceneColor = gl_FrontLightModelProduct.sceneColor;
-   
-	return shadow * sceneColor * (Idiff + Ispec + Iamb);  
-   
-}
-
-float computePreEvaluationBasedOnNormalOrientation()
-{
-
-	vec3 L = normalize(lightPosition.xyz - v);   
-	vec3 N2 = N;
-
-	if(!gl_FrontFacing)
-		N2 *= -1;
-
-	if(max(dot(N2,L), 0.0) == 0.0) 
+	if(max(dot(normal.xyz,L), 0.0) == 0) 
 		return shadowIntensity;
 	else
 		return 1.0;
@@ -210,7 +168,7 @@ float computeAverageBlockerDepthBasedOnPCF(vec4 normalizedShadowCoord)
 
 	float averageDepth = 0.0;
 	int numberOfBlockers = 0;
-	float blockerSearchWidth = float(lightSourceRadius)/float(shadowMapWidth);
+	float blockerSearchWidth = float(lightSourceRadius) / float(shadowMapWidth);
 	float stepSize = 2.0 * blockerSearchWidth/float(blockerSearchSize);
 	float filterWidth = (blockerSearchSize - 1.0) * 0.5;
 	
@@ -405,7 +363,7 @@ float computePenumbraWidth(float averageDepth, float distanceToLight)
 
 	float penumbraWidth = ((distanceToLight - averageDepth)/averageDepth) * float(lightSourceRadius);
 	return (float(zNear) * penumbraWidth)/distanceToLight;
-	
+	//float penumbraWidth = ((distanceToLight - averageDepth)/averageDepth);
 }
 
 float PCF(float penumbraWidth, vec4 normalizedShadowCoord)
@@ -572,6 +530,14 @@ float computeVisibilityFromHSM(vec4 normalizedShadowCoord)
 
 	float mipLevel = float(shadowMapWidth)/1024.0 + 0.5;
 	if(shadowMapWidth > 1024) mipLevel = 1.75;
+	/*
+	float zmin = texture2DLod(hierarchicalShadowMap, normalizedShadowCoord.xy, 8).x;
+	float wk = (float(lightSourceRadius)/float(shadowMapWidth)) * (1/zmin - 1/normalizedShadowCoord.z);
+	float mipLevel = floor(log2(wk));
+	float zmin2 = texture2DLod(hierarchicalShadowMap, normalizedShadowCoord.xy, mipLevel).x;
+	float wk2 = (float(lightSourceRadius)/float(shadowMapWidth)) * (1/zmin2 - 1/normalizedShadowCoord.z);
+	float mipLevel2 = abs(floor(log2(wk2))) + 1.75;
+	*/
 	vec2 minMax = texture2DLod(hierarchicalShadowMap, normalizedShadowCoord.xy, mipLevel).xy;
 	
 	if(normalizedShadowCoord.z <= minMax.x) return 1.0;
@@ -632,8 +598,13 @@ float momentSoftShadowMapping(vec4 normalizedShadowCoord)
 void main()
 {	
 
+	vec4 vertex = texture2D(vertexMap, f_texcoord);
+	if(vertex.x == 0.0) discard; //Discard background scene
+
+	vec4 normal = texture2D(normalMap, f_texcoord);
+	vec4 shadowCoord = lightMVP * vertex;
 	vec4 normalizedShadowCoord = shadowCoord / shadowCoord.w;
-	float shadow = computePreEvaluationBasedOnNormalOrientation();
+	float shadow = computePreEvaluationBasedOnNormalOrientation(vertex, normal);
 	
 	if(shadowCoord.w > 0.0 && shadow == 1.0) {
 	
@@ -650,6 +621,6 @@ void main()
 		
 	}
 
-	gl_FragColor = phong(shadow);
+	gl_FragColor = vec4(shadow, 0.0, 0.0, 1.0);
 
 }

@@ -37,7 +37,7 @@ float bilateralShadowFiltering() {
 	float weight = 0.0;
 	float invSigmaColor = 0.5f / (sigmaColor * sigmaColor);
 	float invSigmaSpace = 0.5f / (sigmaSpace * sigmaSpace);
-	float sigma = 1.0;
+	float sigma = 1;
 
 	for(float h = -penumbraWidth; h <= penumbraWidth; h += stepSize) {
 		

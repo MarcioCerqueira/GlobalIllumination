@@ -13,6 +13,7 @@ public:
 	QuadTreeLightSource(LightSource *lightSource);
 	~QuadTreeLightSource();
 	void buildFirstLevel();
+	void condense();
 	void configureLeafNodes();
 	glm::vec3 getEye(int sampleIndex);
 	glm::vec3 getAt(int sampleIndex);
@@ -21,7 +22,8 @@ public:
 	float getWeight() { return weight; }
 	bool hasAnyChildren() { return hasChildren; }
 	void subdivide();
-
+	void updateReferenceSamples(glm::vec3 referenceSampleEye, glm::vec3 referenceSampleAt);
+	
 private:
 
 	glm::vec3 computeUniformSamples(glm::vec3 sample, int sampleIndex);
