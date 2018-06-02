@@ -31,6 +31,7 @@ public:
 	glm::mat4 getViewMatrix() { return view; }
 	glm::mat4 getModelMatrix() { return model; }
 	glm::mat4 getPSRMatrix() { return psr; }
+	float* getMVMatrix();
 	void loadVBOs(GLuint *VBOs, Mesh *scene);
 	void setEye(glm::vec3 eye) { this->eye = eye; }
 	void setLook(glm::vec3 look) { this->look = look; }

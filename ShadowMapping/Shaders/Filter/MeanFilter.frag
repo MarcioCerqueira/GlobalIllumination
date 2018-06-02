@@ -58,7 +58,6 @@ vec4 blur(vec2 step, vec2 center, vec2 dir, vec4 vertex)
 void main()
 {	
 
-
 	vec4 vertex = texture2D(vertexMap, f_texcoord);	
 	if(vertex.x == 0.0) discard;
 
@@ -72,4 +71,6 @@ void main()
 
 	gl_FragColor = blur(step, center, dir, vertex);
 	
+
+	//gl_FragColor = texture2D(image, f_texcoord.st);
 }

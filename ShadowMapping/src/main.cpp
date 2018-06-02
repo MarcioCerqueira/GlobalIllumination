@@ -34,7 +34,6 @@
 #include "Viewers\shader.h"
 #include "Viewers\ShadowParams.h"
 #include "IO\SceneLoader.h"
-#include "EDT\EDT.h"
 #include "EDT\pba2D.h"
 #include "Mesh.h"
 #include "Filter.h"
@@ -54,9 +53,7 @@ enum
 	TEXTURE_MAP_COLOR = 9,
 	HARD_SHADOW_DEPTH = 10,
 	HARD_SHADOW_COLOR = 11,
-	CUDA_MAP_DEPTH = 12,
-	CUDA_MAP_COLOR = 13,
-	CUDA_POSITION_MAP_COLOR = 14
+	POSITION_MAP_COLOR = 12
 };
 
 enum
@@ -70,9 +67,9 @@ enum
 	LOG_GAUSSIAN_FILTER_SHADER = 6,
 	MEAN_FILTER_SHADER = 7,
 	MORPHOLOGY_FILTER_SHADER = 8,
-	SMSR_SHADER = 9,
-	ALT_SMSR_SHADER = 10,
-	RSMSS_SHADER = 11,
+	CONSERVATIVE_RBSM_SHADER = 9,
+	NON_CONSERVATIVE_RBSM_SHADER = 10,
+	FILTERED_RBSM_SHADER = 11,
 	GBUFFER_SHADER = 12,
 	PHONG_SHADING_SHADER = 13
 };
@@ -83,16 +80,15 @@ enum
 	FILTER_X_FRAMEBUFFER = 1,
 	FILTER_Y_FRAMEBUFFER = 2,
 	GBUFFER_FRAMEBUFFER = 3,
-	HARD_SHADOW_FRAMEBUFFER = 4,
-	CUDA_FRAMEBUFFER = 5
+	HARD_SHADOW_FRAMEBUFFER = 4
 };
 
 //Window size
-int windowWidth = 1280;
-int windowHeight = 720;
+int windowWidth = 1024;
+int windowHeight = 1024;
 
-int shadowMapWidth = 512 * 2;
-int shadowMapHeight = 512 * 2;
+int shadowMapWidth = 512 * 4;
+int shadowMapHeight = 512 * 4;
 
 //  The number of frames
 int frameCount = 0;
@@ -147,45 +143,8 @@ int vel = 1;
 float animation = -1800;
 
 //Euclidean Distance Transform
-cudaGraphicsResource_t CUDAGraphicsResource[2];
-cudaStream_t umbraStream;
-cudaStream_t litStream;
+cudaGraphicsResource_t CUDAGraphicsResource[3];
 float *GPUNormalizedEDTImage;
-int *GPUUmbraNearestSite;
-int *GPULitNearestSite;
-int *GPUUmbraProximateSites;
-int *GPULitProximateSites;
-
-//Animation parameters
-/*
-//1. EDTSM 
-//Model: Teapot
-//Viewport Resolution: 1280 x 720
-//Shadow Map Resolution: 1024 x 1024
-//ve 0.0 41.0 -50.0
-//va 0.0 16.0 -10.0
-//le -10.0 140.0 100.0
-//la 0.0 0.0 0.0
-float animVel = 200;
-int interval = 1;
-float xFactor = 41 - 15;
-float yFactor = -50 + 23;
-int globalUpdate = -1;
-int globalCount = 0;
-*/
-
-//4. Results 
-//Model: Dragon
-//Viewport Resolution: 1280 x 720
-//Shadow Map Resolution: 512 x 512
-//ve -2.0 26.0 -39.0
-//va -2.0 1.0 1.0
-//le 10.0 135.0 100.0
-//la 0.0 0.0 0.0
-float animVel = 200;
-int interval = 1;
-int globalUpdate = -1;
-int globalCount = 0;
 
 double cpu_time(void)
 {
@@ -200,55 +159,6 @@ void calculateFPS()
 {
 
 	frameCount++;
-	/*
-	//1. EDTSM
-	globalCount++;
-	if(globalUpdate == -1 && globalCount > 100) {
-
-		globalUpdate = 0;
-		globalCount = 1;
-
-	} 
-	
-	if(globalUpdate >= 0) {
-
-		if(globalCount % interval == 0 && globalCount < interval * animVel) {
-			cameraEye[1] -= xFactor/animVel;
-			cameraEye[2] -= yFactor/animVel;
-			cameraAt[1] -= xFactor/animVel;
-			cameraAt[2] -= yFactor/animVel;
-		} else if(globalCount == interval * animVel * 2.5) {
-			exit(0);
-		}
-
-	}
-	*/
-	//4. Results
-	globalCount++;
-	if(globalCount > 100) {
-		//globalUpdate++;
-		globalCount = 1;
-	}
-	if(globalUpdate == 0) {
-		shadowParams.naive = false;
-		shadowParams.bilinearPCF = true;
-	} else if(globalUpdate == 1) {
-		gaussianFilter->buildGaussianKernel(3);
-		shadowParams.bilinearPCF = false;
-		shadowParams.VSM = true;
-	} else if(globalUpdate == 2) {
-		shadowParams.VSM = false;
-		shadowParams.MSM = true;
-	} else if(globalUpdate == 3) {
-		gaussianFilter->buildGaussianKernel(5);
-		shadowParams.MSM = false;
-		shadowParams.RPCFPlusRSMSS = true;
-	} else if(globalUpdate == 4) {
-		shadowParams.RPCFPlusRSMSS = false;
-		shadowParams.EDTSM = true;
-	} else if(globalUpdate == 5) {
-		exit(true);
-	}
 	currentTime = glutGet(GLUT_ELAPSED_TIME);
 
     int timeInterval = currentTime - previousTime;
@@ -491,11 +401,13 @@ void computeHardShadows()
 {
 	
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0);
-	if(shadowParams.EDTSM) glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[CUDA_FRAMEBUFFER]);
-	else glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HARD_SHADOW_FRAMEBUFFER]);	
+	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HARD_SHADOW_FRAMEBUFFER]);	
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	if(shadowParams.SMSR || shadowParams.RPCFPlusSMSR || shadowParams.EDTSM) displaySceneFromGBuffer(shaderProg[SMSR_SHADER]);
-	else if(shadowParams.RSMSS || shadowParams.RPCFPlusRSMSS) displaySceneFromGBuffer(shaderProg[RSMSS_SHADER]);
+	if(shadowParams.SMSR || shadowParams.RPCFPlusSMSR || shadowParams.EDTSM) {
+		if(shadowParams.conservative) displaySceneFromGBuffer(shaderProg[CONSERVATIVE_RBSM_SHADER]);
+		else displaySceneFromGBuffer(shaderProg[NON_CONSERVATIVE_RBSM_SHADER]);
+	}
+	else if(shadowParams.RSMSS || shadowParams.RPCFPlusRSMSS) displaySceneFromGBuffer(shaderProg[FILTERED_RBSM_SHADER]);
 	else displaySceneFromGBuffer(shaderProg[SHADOW_MAPPING_SHADER]);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	
@@ -509,52 +421,6 @@ void filterHardShadowsUsingEDT()
 	pbaNormalizeEDT(GPUNormalizedEDTImage, shadowParams.penumbraSize/5.0, shadowParams.shadowIntensity);
 	pbaCudaUnbindTexture(CUDAGraphicsResource);
 	
-	/*
-	//Estimate penumbra region
-	myGLTextureViewer.setShaderProg(shaderProg[MORPHOLOGY_FILTER_SHADER]);
-	myGLGeometryViewer.setShaderProg(shaderProg[MORPHOLOGY_FILTER_SHADER]);
-	if(shadowParams.useSeparableFilter) {
-
-		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[FILTER_X_FRAMEBUFFER]);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		glViewport(0, 0, windowWidth, windowHeight);
-		myGLTextureViewer.configureSeparableFilter(shadowParams.penumbraSize, false, true);
-		myGLGeometryViewer.configurePhong(lightEye, cameraEye);
-		myGLGeometryViewer.configureGBuffer(shadowParams);
-		myGLGeometryViewer.configureLinearization();
-		myGLTextureViewer.drawTextureOnShader(textures[HARD_SHADOW_COLOR], windowWidth, windowHeight);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-			
-	}
-
-	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[CUDA_FRAMEBUFFER]);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glViewport(0, 0, windowWidth, windowHeight);
-	if(shadowParams.useSeparableFilter) myGLTextureViewer.configureSeparableFilter(shadowParams.penumbraSize, true, false);
-	else myGLTextureViewer.configureSeparableFilter(shadowParams.penumbraSize, true, true);
-	myGLGeometryViewer.configurePhong(lightEye, cameraEye);
-	myGLGeometryViewer.configureGBuffer(shadowParams);
-	myGLGeometryViewer.configureLinearization();
-	if(shadowParams.useSeparableFilter) myGLTextureViewer.drawTextureOnShader(textures[FILTER_X_MAP_COLOR], windowWidth, windowHeight);
-	else myGLTextureViewer.drawTextureOnShader(textures[HARD_SHADOW_COLOR], windowWidth, windowHeight);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-	GPUClearStructure(GPUUmbraProximateSites, windowHeight, windowWidth, umbraStream);
-	GPUClearStructure(GPULitProximateSites, windowHeight, windowWidth, litStream);
-	
-	GPUCudaBindTexture(CUDAGraphicsResource[0]);
-	GPUComputeNearestSiteInRow(GPUUmbraNearestSite, 0.0, windowHeight, windowWidth, umbraStream);
-	GPUComputeNearestSiteInRow(GPULitNearestSite, 1.0, windowHeight, windowWidth, litStream);
-	GPUComputeProximateSitesInColumn(GPUUmbraNearestSite, GPUUmbraProximateSites, windowHeight, windowWidth, umbraStream);
-	GPUComputeProximateSitesInColumn(GPULitNearestSite, GPULitProximateSites, windowHeight, windowWidth, litStream);
-	GPUComputeNearestSiteInFull(GPUUmbraProximateSites, GPUUmbraNearestSite, windowHeight, windowWidth, umbraStream);
-	GPUComputeNearestSiteInFull(GPULitProximateSites, GPULitNearestSite, windowHeight, windowWidth, litStream);
-	cudaStreamSynchronize(umbraStream);
-	cudaStreamSynchronize(litStream);
-	GPUNormalizeDistanceTransform(GPUUmbraNearestSite, GPULitNearestSite, GPUNormalizedEDTImage, windowHeight, windowWidth, shadowParams.shadowIntensity);
-	GPUCudaUnbindTexture(CUDAGraphicsResource[0]);
-	*/
-
 	//Remove skeleton artifacts using screen-space Gaussian blur
 	myGLTextureViewer.setShaderProg(shaderProg[MEAN_FILTER_SHADER]);
 	myGLGeometryViewer.setShaderProg(shaderProg[MEAN_FILTER_SHADER]);
@@ -565,7 +431,7 @@ void filterHardShadowsUsingEDT()
 	myGLGeometryViewer.configurePhong(lightEye, cameraEye);
 	myGLGeometryViewer.configureGBuffer(shadowParams);
 	myGLGeometryViewer.configureLinearization();
-	myGLTextureViewer.drawTextureOnShader(textures[CUDA_MAP_COLOR], windowWidth, windowHeight);
+	myGLTextureViewer.drawTextureOnShader(textures[HARD_SHADOW_COLOR], windowWidth, windowHeight);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		
 	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HARD_SHADOW_FRAMEBUFFER]);
@@ -643,17 +509,6 @@ void keyboard(unsigned char key, int x, int y)
 	switch(key) {
 	case 27:
 		exit(0);
-		break;
-	case 't':    
-		cameraEye[0] = -1.0;
-		cameraEye[1] = -3.0;
-		cameraEye[2] = -10.0;
-		cameraAt[0] = -1.0;
-		cameraAt[1] = -172.0;
-		cameraAt[2] = 30.0;
-		break;
-	case 's':
-		shadowParams.useSeparableFilter = !shadowParams.useSeparableFilter;
 		break;
 	}
 
@@ -845,20 +700,26 @@ void shadowRevectorizationBasedFilteringMenu(int id) {
 		case 0:
 			resetShadowParams();
 			shadowParams.SMSR = true;
+			shadowParams.conservative = true;
 			break;
 		case 1:
 			resetShadowParams();
-			shadowParams.RSMSS = true;
+			shadowParams.SMSR = true;
+			shadowParams.conservative = false;
 			break;
 		case 2:
 			resetShadowParams();
-			shadowParams.RPCFPlusSMSR = true;
+			shadowParams.RSMSS = true;
 			break;
 		case 3:
 			resetShadowParams();
-			shadowParams.RPCFPlusRSMSS = true;
+			shadowParams.RPCFPlusSMSR = true;
 			break;
 		case 4:
+			resetShadowParams();
+			shadowParams.RPCFPlusRSMSS = true;
+			break;
+		case 5:
 			resetShadowParams();
 			shadowParams.EDTSM = true;
 			break;
@@ -945,11 +806,12 @@ void createMenu() {
 		glutAddMenuEntry("Moment Shadow Mapping", 5);
 
 	shadowRevectorizationBasedFilteringMenuID = glutCreateMenu(shadowRevectorizationBasedFilteringMenu);
-		glutAddMenuEntry("SMSR", 0);
-		glutAddMenuEntry("RSMSS", 1);
-		glutAddMenuEntry("RPCF + SMSR", 2);
-		glutAddMenuEntry("RPCF + RSMSS", 3);
-		glutAddMenuEntry("EDT-SM", 4);
+		glutAddMenuEntry("Conservative Revectorization-based Shadow Mapping", 0);
+		glutAddMenuEntry("Non-Conservative Revectorization-based Shadow Mapping", 1);
+		glutAddMenuEntry("Revectorization-based Filtering (1D)", 2);
+		glutAddMenuEntry("Revectorization-based Percentage-Closer Filtering (v. 1)", 3);
+		glutAddMenuEntry("Revectorization-based Percentage-Closer Filtering (v. 2)", 4);
+		glutAddMenuEntry("Euclidean Distance Transform Shadow Mapping", 5);
 
 	transformationMenuID = glutCreateMenu(transformationMenu);
 		glutAddMenuEntry("Translation", 0);
@@ -978,7 +840,7 @@ void initGL(char *configurationFile) {
 
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0);
 	glShadeModel(GL_SMOOTH);
-	glPixelStorei( GL_UNPACK_ALIGNMENT, 1);  
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);  
 
 	if(textures[0] == 0)
 		glGenTextures(20, textures);
@@ -994,7 +856,7 @@ void initGL(char *configurationFile) {
 	sceneLoader->load();
 
 	gaussianFilter = new Filter();
-	gaussianFilter->buildGaussianKernel(21);
+	gaussianFilter->buildGaussianKernel(7);
 
 	float centroid[3];
 	scene->computeCentroid(centroid);
@@ -1011,8 +873,8 @@ void initGL(char *configurationFile) {
 	shadowParams.depthThreshold = sceneLoader->getDepthThreshold();
 	resetShadowParams();
 	shadowParams.naive = true;
+	shadowParams.conservative = false;
 	shadowParams.shadowIntensity = 0.25;
-	shadowParams.useSeparableFilter = false;
 	
 	myGLTextureViewer.loadQuad();
 	createMenu();
@@ -1028,15 +890,13 @@ void initGL(char *configurationFile) {
 	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, NORMAL_MAP_COLOR, windowWidth, windowHeight, GL_NEAREST);
 	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, TEXTURE_MAP_COLOR, windowWidth, windowHeight, GL_NEAREST);
 	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, HARD_SHADOW_COLOR, windowWidth, windowHeight, GL_NEAREST);
-	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, CUDA_MAP_COLOR, windowWidth, windowHeight, GL_NEAREST);
-	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, CUDA_POSITION_MAP_COLOR, windowWidth, windowHeight, GL_NEAREST);
+	myGLTextureViewer.loadRGBATexture((float*)NULL, textures, POSITION_MAP_COLOR, windowWidth, windowHeight, GL_NEAREST);
 	
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, SHADOW_MAP_DEPTH, shadowMapWidth, shadowMapHeight);
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, FILTER_X_MAP_DEPTH, windowWidth, windowHeight);
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, FILTER_Y_MAP_DEPTH, windowWidth, windowHeight);
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, GBUFFER_MAP_DEPTH, windowWidth, windowHeight);
 	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, HARD_SHADOW_DEPTH, windowWidth, windowHeight);
-	myGLTextureViewer.loadDepthComponentTexture(NULL, textures, CUDA_MAP_DEPTH, windowWidth, windowHeight);
 	
 	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[SHADOW_FRAMEBUFFER]);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[SHADOW_MAP_DEPTH], 0);
@@ -1074,35 +934,22 @@ void initGL(char *configurationFile) {
 	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[HARD_SHADOW_FRAMEBUFFER]);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[HARD_SHADOW_DEPTH], 0);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[HARD_SHADOW_COLOR], 0);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE)
-		printf("FBO OK\n");
-
-	glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[CUDA_FRAMEBUFFER]);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textures[CUDA_MAP_DEPTH], 0);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[CUDA_MAP_COLOR], 0);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, textures[CUDA_POSITION_MAP_COLOR], 0);
-	GLenum CUDABufferTemp[2];
-	CUDABufferTemp[0] = GL_COLOR_ATTACHMENT0;
-	CUDABufferTemp[1] = GL_COLOR_ATTACHMENT1;
-	glDrawBuffers(2, CUDABufferTemp);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, textures[POSITION_MAP_COLOR], 0);
+	GLenum ShadowBufferTemp[2];
+	ShadowBufferTemp[0] = GL_COLOR_ATTACHMENT0;
+	ShadowBufferTemp[1] = GL_COLOR_ATTACHMENT1;
+	glDrawBuffers(2, ShadowBufferTemp);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	if(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE)
 		printf("FBO OK\n");
 
 	cudaGLSetGLDevice(0);
-	cudaGraphicsGLRegisterImage( &CUDAGraphicsResource[0], textures[CUDA_MAP_COLOR], GL_TEXTURE_2D, 0);
-	cudaGraphicsGLRegisterImage( &CUDAGraphicsResource[1], textures[CUDA_POSITION_MAP_COLOR], GL_TEXTURE_2D, 0);
+	cudaGraphicsGLRegisterImage( &CUDAGraphicsResource[0], textures[HARD_SHADOW_COLOR], GL_TEXTURE_2D, 0);
+	cudaGraphicsGLRegisterImage( &CUDAGraphicsResource[1], textures[POSITION_MAP_COLOR], GL_TEXTURE_2D, 0);
+	cudaGraphicsGLRegisterImage( &CUDAGraphicsResource[2], textures[VERTEX_MAP_COLOR], GL_TEXTURE_2D, 0);
 
 	pba2DInitialization(windowWidth, windowHeight);
-	cudaMalloc(&GPUNormalizedEDTImage, windowWidth * windowHeight * 4 * sizeof(float));
-	cudaMalloc(&GPUUmbraNearestSite, windowWidth * windowHeight * sizeof(int));
-	cudaMalloc(&GPULitNearestSite, windowWidth * windowHeight * sizeof(int));
-	cudaMalloc(&GPUUmbraProximateSites, windowWidth * windowHeight * sizeof(int));
-	cudaMalloc(&GPULitProximateSites, windowWidth * windowHeight * sizeof(int));
-	cudaStreamCreate(&umbraStream);
-	cudaStreamCreate(&litStream);
-
+	
 }
 
 int main(int argc, char **argv) {
@@ -1130,9 +977,9 @@ int main(int argc, char **argv) {
 	initShader("Shaders/Filter/LogGaussianFilter", LOG_GAUSSIAN_FILTER_SHADER);
 	initShader("Shaders/Filter/MeanFilter", MEAN_FILTER_SHADER);
 	initShader("Shaders/Filter/MorphologyFilter", MORPHOLOGY_FILTER_SHADER);
-	initShader("Shaders/RBSM/ReallyOptimized/SMSR", SMSR_SHADER);
-	initShader("Shaders/RBSM/ReallyOptimized/SMSR", ALT_SMSR_SHADER);
-	initShader("Shaders/RBSM/ReallyOptimized/RSMSS", RSMSS_SHADER);
+	initShader("Shaders/RBSM/ConservativeSMSR", CONSERVATIVE_RBSM_SHADER);
+	initShader("Shaders/RBSM/NonConservativeSMSR", NON_CONSERVATIVE_RBSM_SHADER);
+	initShader("Shaders/RBSM/FilteredRBSM", FILTERED_RBSM_SHADER);
 	initShader("Shaders/GBuffer/GBuffer", GBUFFER_SHADER);
 	initShader("Shaders/GBuffer/PhongShading", PHONG_SHADING_SHADER);
 	glUseProgram(0); 
@@ -1144,12 +991,6 @@ int main(int argc, char **argv) {
 	delete gaussianFilter;
 	pba2DDeinitialization();
 	cudaFree(GPUNormalizedEDTImage);
-	cudaFree(GPUUmbraNearestSite);
-	cudaFree(GPULitNearestSite);
-	cudaFree(GPUUmbraProximateSites);
-	cudaFree(GPULitProximateSites);
-	cudaStreamDestroy(umbraStream);
-	cudaStreamDestroy(litStream);
 	return 0;
 
 }

@@ -367,6 +367,19 @@ void MyGLGeometryViewer::drawMesh(GLuint *VBOs, int numberOfIndices, int numberO
 
 }
 
+float* MyGLGeometryViewer::getMVMatrix()
+{
+
+	glm::mat4 MV = view * model;
+	float fMV[16];
+	fMV[0] = MV[0][0];	fMV[1] = MV[0][1]; fMV[2] = MV[0][2]; fMV[3] = MV[0][3];
+	fMV[4] = MV[1][0];	fMV[5] = MV[1][1]; fMV[6] = MV[1][2]; fMV[7] = MV[1][3];
+	fMV[8] = MV[2][0];	fMV[9] = MV[2][1]; fMV[10] = MV[2][2]; fMV[11] = MV[2][3];
+	fMV[12] = MV[3][0];	fMV[13] = MV[3][1]; fMV[14] = MV[3][2]; fMV[15] = MV[3][3];
+	return fMV;
+
+}
+
 void MyGLGeometryViewer::loadVBOs(GLuint *VBOs, Mesh *scene)
 {
 

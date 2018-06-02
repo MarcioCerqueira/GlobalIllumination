@@ -28,7 +28,7 @@ typedef struct ShadowParams
 	bool RPCFPlusRSMSS; //SMSR
 	bool EDTSM;
 	bool useHardShadowMap;
-	bool useSeparableFilter;
+	bool conservative;
 	GLuint shadowMap;
 	GLuint vertexMap;
 	GLuint normalMap;
