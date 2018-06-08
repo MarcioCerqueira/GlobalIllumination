@@ -56,8 +56,8 @@ void main()
 	if(vertex.x == 0.0) discard; //Discard background scene
 
 	vec4 normal = texture2D(normalMap, f_texcoord);
-	float shadow = computePreEvaluationBasedOnNormalOrientation(vertex, normal);
-	
+	//float shadow = computePreEvaluationBasedOnNormalOrientation(vertex, normal);
+	float shadow = 1.0;
 	if(shadow == 1.0) {
 		
 		vec4 shadowCoord;

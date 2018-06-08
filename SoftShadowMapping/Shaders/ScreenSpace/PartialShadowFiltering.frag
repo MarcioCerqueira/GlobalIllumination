@@ -217,6 +217,50 @@ float bilateralShadowFiltering(float penumbraWidth) {
 	
 }
 
+float linearize(float depth) {
+
+	float n = float(1.0);
+	float f = float(1000.0);
+	depth = (2.0 * n) / (f + n - depth * (f - n));
+	return depth;
+
+}
+
+float adjustColor(float centralColor, float currentColor, float centralDepth, float currentDepth) 
+{
+
+	if(currentColor == 0.0) return centralColor;
+	else if(abs(linearize(currentDepth) - linearize(centralDepth)) >= 0.0025) return centralColor;
+	else if(currentColor <= shadowIntensity && centralColor == 1.0) return centralColor;
+	else if(currentColor == 1.0 && centralColor <= shadowIntensity) return centralColor;
+	else return currentColor;
+	
+}
+
+vec2 meanShadowFiltering(float penumbraWidth) {
+
+	float illuminationCount = 0.0;
+	float count = 0.0;
+	float stepSize = 2.0 * penumbraWidth/float(kernelSize);
+		
+	if(stepSize <= 0.0 || stepSize >= 1.0)
+		return 1.0;
+
+	vec4 color = texture2D(hardShadowMap, f_texcoord.xy);
+	
+	for(float w = -penumbraWidth; w <= penumbraWidth; w += stepSize) {
+		
+		vec4 currentColor = texture2D(hardShadowMap, vec2(f_texcoord.xy + vec2(w, 0.0)));
+		currentColor.r = adjustColor(color.r, currentColor.r, color.g, currentColor.g);
+		illuminationCount += currentColor.r;
+		count++;
+
+	}
+		
+	return vec2(illuminationCount/count, color.g);
+	
+}
+
 vec2 gaussianShadowFiltering(float penumbraWidth) {
 
 	float shadow = 0.0;
@@ -278,6 +322,8 @@ void main()
 			else {
 				averageDepth = computeAverageBlockerDepthBasedOnSSABSS(normalizedShadowCoord);
 				penumbraWidth = computePenumbraWidth(averageDepth, normalizedShadowCoord.z, vertex);
+				//shadow.rg = meanShadowFiltering(penumbraWidth);
+				//gl_FragColor = vec4(shadow.rg, penumbraWidth, 1.0);
 				shadow.r = bilateralShadowFiltering(penumbraWidth);
 				gl_FragColor = vec4(shadow.r, penumbraWidth, 0.0, 1.0);
 			}

@@ -142,10 +142,10 @@ void pba2DPhase1(int m1)
     cudaBindTexture(0, pbaTexColor, pbaTextures[0]); 
     kernelFloodDown<<< grid, block>>>(pbaTextures[1], pbaTexWidth, pbaTexHeight / m1); 
     cudaUnbindTexture(pbaTexColor); 
-
+	   
     cudaBindTexture(0, pbaTexColor, pbaTextures[1]); 
     kernelFloodUp<<< grid, block>>>(pbaTextures[1], pbaTexWidth, pbaTexHeight / m1); 
-
+	 
     // Passing information between bands
     grid = dim3(pbaTexWidth / block.x, m1); 
     kernelPropagateInterband<<< grid, block>>>(pbaTextures[0], pbaTexWidth, pbaTexHeight / m1); 

@@ -39,3 +39,5 @@ It was implemented based on the following papers:
 	- Moment Soft Shadow Mapping proposed in "Beyond Hard Shadows: Moment Shadow Maps for Single Scattering, Soft Shadows and Translucent Occluders" by C. Peters et al. in 2016;
 
 	- Revectorization-based Accurate Soft Shadowing proposed in "Revectorization-based Accurate Soft Shadow using Adaptive Area Light Source Sampling" by M. Macedo and A. Apolinario in 2017;
+
+	- Euclidean Distance Transform Soft Shadow Mapping proposed in "Euclidean Distance Transform Soft Shadow Mapping" by M. Macedo and A. Apolinario in 2017;

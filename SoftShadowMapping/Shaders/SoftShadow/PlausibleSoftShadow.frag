@@ -168,7 +168,9 @@ float computeAverageBlockerDepthBasedOnPCF(vec4 normalizedShadowCoord)
 
 	float averageDepth = 0.0;
 	int numberOfBlockers = 0;
-	float blockerSearchWidth = float(lightSourceRadius) / float(shadowMapWidth);
+	float blockerSearchWidth;
+	if(shadowMapWidth <= 1024.0) blockerSearchWidth = float(lightSourceRadius)/float(shadowMapWidth);
+	else blockerSearchWidth = float(lightSourceRadius)/float(1024.0);
 	float stepSize = 2.0 * blockerSearchWidth/float(blockerSearchSize);
 	float filterWidth = (blockerSearchSize - 1.0) * 0.5;
 	
@@ -194,7 +196,9 @@ float computeAverageBlockerDepthBasedOnPCF(vec4 normalizedShadowCoord)
 float computeAverageBlockerDepthBasedOnVSM(vec4 normalizedShadowCoord) 
 {
 
-	float blockerSearchWidth = float(lightSourceRadius)/float(shadowMapWidth);
+	float blockerSearchWidth;
+	if(shadowMapWidth <= 1024.0) blockerSearchWidth = float(lightSourceRadius)/float(shadowMapWidth);
+	else blockerSearchWidth = float(lightSourceRadius)/float(1024.0);
 	float stepSize = 2.0 * blockerSearchWidth/float(blockerSearchSize);
 	float filterWidth = (blockerSearchSize - 1.0) * 0.5;
 	float zunocc = linearize(normalizedShadowCoord.z);
@@ -242,7 +246,10 @@ float computeAverageBlockerDepthBasedOnVSM(vec4 normalizedShadowCoord)
 float computeAverageBlockerDepthBasedOnESM(vec4 normalizedShadowCoord)
 {
 	
-	float blockerSearchWidth = float(lightSourceRadius)/float(shadowMapWidth);
+	float blockerSearchWidth;
+	if(shadowMapWidth <= 1024.0) blockerSearchWidth = float(lightSourceRadius)/float(shadowMapWidth);
+	else blockerSearchWidth = float(lightSourceRadius)/float(1024.0);
+
 	float stepSize = 2.0 * blockerSearchWidth/float(blockerSearchSize);
 	float filterWidth = (blockerSearchSize - 1.0) * 0.5;
 	
@@ -622,5 +629,5 @@ void main()
 	}
 
 	gl_FragColor = vec4(shadow, 0.0, 0.0, 1.0);
-
+	
 }

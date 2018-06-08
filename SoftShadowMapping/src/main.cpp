@@ -124,11 +124,11 @@ enum
 
 bool temp = false;
 //Window size
-int windowWidth = 1024;
-int windowHeight = 1024;
+int windowWidth = 1280;
+int windowHeight = 720;
 
-int shadowMapWidth = 512 * 1;
-int shadowMapHeight = 512 * 1;
+int shadowMapWidth = 512 * 2;
+int shadowMapHeight = 512 * 2;
 
 //  The number of frames
 int frameCount = 0;
@@ -1008,10 +1008,15 @@ void renderSoftShadows()
 	
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0);
 		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer[SOFT_SHADOW_FRAMEBUFFER]);
+		glBeginQuery(GL_SAMPLES_PASSED, queryObject[0]);
 		if(shadowParams.RBSSM) displaySceneFromGBuffer(shaderProg[RBSSM_SHADER]);
 		else displaySceneFromGBuffer(shaderProg[PLAUSIBLE_SOFT_SHADOW_SHADER]);
+		glEndQuery(GL_SAMPLES_PASSED);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	
+		GLuint output;
+		glGetQueryObjectuiv(queryObject[0], GL_QUERY_RESULT, &output);
+		//std::cout << output << std::endl;
+
 	}
 	
 }
@@ -1446,6 +1451,7 @@ void plausibleSoftShadowMenu(int id) {
 		resetShadowParameters();
 		shadowParams.RBSSM = true;
 		shadowParams.useHierarchicalShadowMap = true;
+		shadowParams.kernelSize = 7;
 		break;
 	case 6:
 		resetShadowParameters();
@@ -1466,6 +1472,7 @@ void screenSpaceSoftShadowMenu(int id) {
 	case 1:
 		resetShadowParameters();
 		shadowParams.SSABSS = true;
+		shadowParams.kernelSize = 23;
 		break;
 	case 2:
 		resetShadowParameters();
@@ -1475,6 +1482,7 @@ void screenSpaceSoftShadowMenu(int id) {
 		resetShadowParameters();
 		shadowParams.SSRBSSM = true;
 		shadowParams.useHierarchicalShadowMap = true;
+		shadowParams.kernelSize = 23;
 		break;
 	case 4:
 		resetShadowParameters();
@@ -1587,7 +1595,7 @@ void initGL(char *configurationFile) {
 	cameraUp[0] = 0.0; cameraUp[1] = 0.0; cameraUp[2] = 1.0;
 	lightSource->setAt(glm::vec3(sceneLoader->getLightAt()[0], sceneLoader->getLightAt()[1], sceneLoader->getLightAt()[2]));
 	lightSource->setUp(glm::vec3(0.0, 0.0, 1.0));
-	lightSource->setSize(8.0);
+	lightSource->setSize(16.0);
 	
 	uniformSampledLightSource = new UniformSampledLightSource(lightSource, 289.0);
 	quadTreeLightSource = new QuadTreeLightSource(lightSource);
@@ -1613,8 +1621,8 @@ void initGL(char *configurationFile) {
 
 	bilateralFilter = new Filter();
 	bilateralFilter->buildBilateralKernel(shadowParams.kernelSize);
-	bilateralFilter->setSigmaColor(10.0);
-	bilateralFilter->setSigmaSpace(0.01);
+	bilateralFilter->setSigmaColor(1.0); //SanMiguel 1, sigma 10
+	bilateralFilter->setSigmaSpace(0.001); //SanMiguel 0.001
 
 	myGLTextureViewer.loadQuad();
 	createMenu();
@@ -1759,8 +1767,8 @@ int main(int argc, char **argv) {
 	initShader("Shaders/GBuffer/PhongShading", PHONG_SHADING_SHADER);
 	initShader("Shaders/GBuffer/GBuffer", GBUFFER_SHADER);
 	initShader("Shaders/HardShadow/HardShadow", HARD_SHADOW_SHADER);
-	initShader("Shaders/HardShadow/RSMSS", RSMSS_SHADER);
-	initShader("Shaders/HardShadow/SMSR", SMSR_SHADER);
+	initShader("Shaders/HardShadow/FilteredRBSM", RSMSS_SHADER);
+	initShader("Shaders/HardShadow/NonConservativeRBSM", SMSR_SHADER);
 	initShader("Shaders/HardShadow/Discontinuity", DISCONTINUITY_SHADER);
 	initShader("Shaders/Exponential", EXPONENTIAL_SHADER);
 	initShader("Shaders/Moments/Moments", MOMENT_SHADER);

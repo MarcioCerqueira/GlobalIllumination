@@ -1151,7 +1151,9 @@ float computeAverageBlockerDepthBasedOnPCF(vec4 normalizedShadowCoord)
 
 	float averageDepth = 0.0;
 	int numberOfBlockers = 0;
-	float blockerSearchWidth = float(lightSourceRadius)/float(shadowMapWidth);
+	float blockerSearchWidth;
+	if(shadowMapWidth <= 1024.0) blockerSearchWidth = float(lightSourceRadius)/float(shadowMapWidth);
+	else blockerSearchWidth = float(lightSourceRadius)/float(1024.0);
 	float filterWidth = (blockerSearchSize - 1.0) * 0.5;
 	
 	for(int h = -filterWidth; h <= filterWidth; h++) {
@@ -1231,6 +1233,7 @@ float RBSSM(float penumbraWidth, vec4 normalizedShadowCoord)
 			discontinuity = computeDiscontinuity(normalizedLightCoord, distanceFromLight);
 			
 			if(discontinuity.r > 0.0 || discontinuity.g > 0.0) {
+			
 			/*	
 				//If discontinuity in all the four directions
 				if(discontinuity.r == 0.75 && discontinuity.g == 0.75) {
@@ -1315,7 +1318,7 @@ float RBSSM(float penumbraWidth, vec4 normalizedShadowCoord)
 				}
 			*/	
 			} else {
-
+				
 				shadow = (normalizedLightCoord.z <= distanceFromLight) ? 1.0 : shadowIntensity; 
 				illuminationCount += shadow;
 			/*
@@ -1338,9 +1341,9 @@ float RBSSM(float penumbraWidth, vec4 normalizedShadowCoord)
 vec4 revectorizationBasedShadowMappingSmoothing(vec4 normalizedShadowCoord) 
 {
 	
-	float visibility = computeVisibilityFromHSM(0.0, normalizedShadowCoord);
-	if(visibility == shadowIntensity || visibility == 1.0) 
-		return visibility;
+	//float visibility = computeVisibilityFromHSM(0.0, normalizedShadowCoord);
+	//if(visibility == shadowIntensity || visibility == 1.0) 
+	//	return visibility;
 	
 	float averageDepth = computeAverageBlockerDepthBasedOnPCF(normalizedShadowCoord);
 	float penumbraWidth = computePenumbraWidth(averageDepth, normalizedShadowCoord.z);
@@ -1371,5 +1374,5 @@ void main()
 		shadow = revectorizationBasedShadowMappingSmoothing(normalizedShadowCoord);
 	
 	gl_FragColor = vec4(shadow, 0.0, 0.0, 1.0);
-
+	
 }
